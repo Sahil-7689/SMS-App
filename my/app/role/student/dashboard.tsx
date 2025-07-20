@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { View, Text, StyleSheet, TextInput, Image, TouchableOpacity, ScrollView, FlatList, Modal, Animated, Easing, Pressable, Platform, Vibration } from "react-native";
+import { View, Text, StyleSheet, TextInput, Image, TouchableOpacity, ScrollView, FlatList, Modal, Animated, Easing, Pressable, Platform, Vibration, Alert, ActivityIndicator } from "react-native";
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from "expo-router";
@@ -15,12 +15,120 @@ const notifications = [
   { id: '2', text: 'Science webinar on Friday.' },
 ];
 
+const mockResources = [
+  { id: '1', title: 'Physics Notes - Chapter 1', file: 'physics_ch1.pdf' },
+  { id: '2', title: 'Maths Formula Sheet', file: 'maths_formulas.pdf' },
+  { id: '3', title: 'English Reading Material', file: 'english_reading.pdf' },
+];
+const mockAssignments = [
+  { id: '1', title: 'Math Assignment 1', file: 'math_assignment1.pdf', due: '2024-06-20' },
+  { id: '2', title: 'Science Project', file: 'science_project.pdf', due: '2024-06-22' },
+  { id: '3', title: 'English Essay', file: 'english_essay.pdf', due: '2024-06-25' },
+];
+
+const [uploadText, setUploadText] = useState('');
+const [uploadingId, setUploadingId] = useState<string | null>(null);
+const [uploadedFiles, setUploadedFiles] = useState<{[key: string]: string}>({});
+const [uploadStatus, setUploadStatus] = useState<{[key: string]: 'idle' | 'uploading' | 'success' | 'error'}>({});
+
+const handleResourceDownload = (file: string) => {
+  Alert.alert('Download', `Pretend downloading: ${file}`);
+};
+const handleAssignmentDownload = (file: string) => {
+  Alert.alert('Download', `Pretend downloading: ${file}`);
+};
+const handleAssignmentUpload = (assignmentId: string) => {
+  if (!uploadText) {
+    Alert.alert('Error', 'Please enter a file name to upload.');
+    return;
+  }
+  
+  setUploadStatus(prev => ({ ...prev, [assignmentId]: 'uploading' }));
+  
+  // Simulate file upload
+  setTimeout(() => {
+    const success = Math.random() > 0.2; // 80% success rate
+    
+    if (success) {
+      setUploadedFiles(prev => ({ ...prev, [assignmentId]: uploadText }));
+      setUploadStatus(prev => ({ ...prev, [assignmentId]: 'success' }));
+      Alert.alert('Success', `File "${uploadText}" uploaded successfully!`);
+      
+      // Reset status after 3 seconds
+      setTimeout(() => {
+        setUploadStatus(prev => ({ ...prev, [assignmentId]: 'idle' }));
+      }, 3000);
+    } else {
+      setUploadStatus(prev => ({ ...prev, [assignmentId]: 'error' }));
+      Alert.alert('Error', 'Upload failed. Please try again.');
+      
+      // Reset status after 3 seconds
+      setTimeout(() => {
+        setUploadStatus(prev => ({ ...prev, [assignmentId]: 'idle' }));
+      }, 3000);
+    }
+    
+    setUploadingId(null);
+    setUploadText('');
+  }, 1500);
+};
+
+const OVERALL_ATTENDANCE = 84;
+const PRESENT = 37;
+const ABSENT = 20;
+const QUICK_STATS = [
+  { label: 'Total Classes', value: 47 },
+  { label: 'Classes Attended', value: 37 },
+  { label: 'Late Attended', value: 7 },
+  { label: 'Classes Missed', value: 20 },
+];
+const SUBJECTS = [
+  { name: 'Math', total: 12, attended: 10 },
+  { name: 'Science', total: 11, attended: 8 },
+  { name: 'English', total: 13, attended: 12 },
+  { name: 'Social Studies', total: 11, attended: 7 },
+];
+
+const SUBJECT_SCORES = [
+  { subject: 'Math', score: 92, max: 100, color: '#A259FF' },
+  { subject: 'Science', score: 85, max: 100, color: '#4ADE80' },
+  { subject: 'English', score: 78, max: 100, color: '#60A5FA' },
+  { subject: 'Social Studies', score: 88, max: 100, color: '#F472B6' },
+];
+
+// Add ranking data constants:
+const RANKING_DATA = {
+  currentRank: 7,
+  totalStudents: 45,
+  previousRank: 9,
+  rankChange: '+2',
+  classAverage: 78,
+  topRank: 1,
+  performance: [
+    { subject: 'Math', rank: 5, score: 92 },
+    { subject: 'Science', rank: 8, score: 85 },
+    { subject: 'English', rank: 3, score: 88 },
+    { subject: 'Social Studies', rank: 12, score: 76 },
+  ],
+  recentRanks: [
+    { month: 'Jan', rank: 9 },
+    { month: 'Feb', rank: 8 },
+    { month: 'Mar', rank: 7 },
+    { month: 'Apr', rank: 7 },
+  ]
+};
+
 const StudentScreen: React.FC = () => {
   const [profileVisible, setProfileVisible] = useState(false);
   const [scaleAnim] = useState(new Animated.Value(0.95));
   const [opacityAnim] = useState(new Animated.Value(0));
   const [activeTab, setActiveTab] = useState('personal'); // 'personal' or 'account'
   const router = useRouter();
+  const [assignmentModalVisible, setAssignmentModalVisible] = useState(false);
+  const [attendanceModalVisible, setAttendanceModalVisible] = useState(false);
+  const [scoreModalVisible, setScoreModalVisible] = useState(false);
+  // Add state for rank modal:
+  const [rankModalVisible, setRankModalVisible] = useState(false);
 
   // Example student details with expanded information
   const studentDetails = {
@@ -117,28 +225,28 @@ const StudentScreen: React.FC = () => {
 
       {/* Performance Metrics */}
       <View style={styles.metricsRow}>
-        <View style={[styles.metricCard, { backgroundColor: '#23262F' }]}> 
+        <TouchableOpacity style={[styles.metricCard, { backgroundColor: '#23262F' }]} onPress={() => setAttendanceModalVisible(true)}>
           <FontAwesome name="calendar-check-o" size={28} color="#4ADE80" style={styles.metricIcon} />
           <Text style={styles.metricLabel}>Attendance</Text>
           <Text style={styles.metricValue}>75%</Text>
-        </View>
-        <View style={[styles.metricCard, { backgroundColor: '#23262F' }]}> 
+        </TouchableOpacity>
+        <TouchableOpacity style={[styles.metricCard, { backgroundColor: '#23262F' }]} onPress={() => setRankModalVisible(true)}>
           <FontAwesome name="trophy" size={28} color="#FFD700" style={styles.metricIcon} />
           <Text style={styles.metricLabel}>Current Rank</Text>
           <Text style={styles.metricValue}>7th</Text>
-        </View>
+        </TouchableOpacity>
       </View>
       <View style={styles.metricsRow}>
-        <View style={[styles.metricCard, { backgroundColor: '#23262F' }]}> 
+        <TouchableOpacity style={[styles.metricCard, { backgroundColor: '#23262F' }]} onPress={() => setAssignmentModalVisible(true)}>
           <FontAwesome name="tasks" size={28} color="#FFA500" style={styles.metricIcon} />
           <Text style={styles.metricLabel}>Assignments</Text>
           <Text style={styles.metricValue}>03/10</Text>
-        </View>
-        <View style={[styles.metricCard, { backgroundColor: '#23262F' }]}> 
+        </TouchableOpacity>
+        <TouchableOpacity style={[styles.metricCard, { backgroundColor: '#23262F' }]} onPress={() => setScoreModalVisible(true)}>
           <FontAwesome name="star" size={28} color="#A259FF" style={styles.metricIcon} />
           <Text style={styles.metricLabel}>Internal Score</Text>
           <Text style={styles.metricValue}>82</Text>
-        </View>
+        </TouchableOpacity>
       </View>
 
       {/* Notifications & Updates */}
@@ -193,6 +301,300 @@ const StudentScreen: React.FC = () => {
           })}
         </View>
       </View>
+
+      {/* Teacher Resources */}
+      <View style={styles.sectionCard}>
+        <Text style={styles.sectionTitle}>Teacher Resources</Text>
+        {mockResources.map(item => (
+          <View key={item.id} style={styles.resourceRow}>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.resourceTitle}>{item.title}</Text>
+              <Text style={styles.resourceFile}>{item.file}</Text>
+            </View>
+            <TouchableOpacity style={styles.downloadBtn} onPress={() => handleResourceDownload(item.file)}>
+              <FontAwesome name="download" size={22} color="#fff" />
+              <Text style={styles.downloadText}>Download</Text>
+            </TouchableOpacity>
+          </View>
+        ))}
+      </View>
+
+      {/* Assignment Modal Popup */}
+      <Modal
+        visible={assignmentModalVisible}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setAssignmentModalVisible(false)}
+      >
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'center', alignItems: 'center' }}>
+          <View style={{ backgroundColor: '#23262F', borderRadius: 18, padding: 24, width: '90%', maxHeight: '90%' }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <Text style={{ color: '#fff', fontSize: 20, fontWeight: 'bold' }}>Assignments</Text>
+              <TouchableOpacity onPress={() => setAssignmentModalVisible(false)}>
+                <FontAwesome name="times" size={22} color="#B0B0B0" />
+              </TouchableOpacity>
+            </View>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              {mockAssignments.map(item => {
+                const isUploaded = uploadedFiles[item.id];
+                const uploadStatusForItem = uploadStatus[item.id] || 'idle';
+                
+                return (
+                  <View key={item.id} style={{ backgroundColor: '#181A20', borderRadius: 12, padding: 16, marginBottom: 14, flexDirection: 'row', alignItems: 'flex-start' }}>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: '#fff', fontSize: 16, fontWeight: '600', marginBottom: 4 }}>{item.title}</Text>
+                      <Text style={{ color: '#A0A0A0', fontSize: 13, marginBottom: 2 }}>{item.file}</Text>
+                      <Text style={{ color: '#FFD700', fontSize: 13, marginBottom: 8 }}>Due: {item.due}</Text>
+                      
+                      {isUploaded && (
+                        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+                          <FontAwesome name="check-circle" size={16} color="#4ADE80" style={{ marginRight: 6 }} />
+                          <Text style={{ color: '#4ADE80', fontSize: 13 }}>Uploaded: {isUploaded}</Text>
+                        </View>
+                      )}
+                      
+                      <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8 }}>
+                        <TextInput
+                          style={{ 
+                            flex: 1, 
+                            backgroundColor: '#23262F', 
+                            color: '#fff', 
+                            borderRadius: 8, 
+                            fontSize: 14, 
+                            padding: 8, 
+                            borderWidth: 1, 
+                            borderColor: uploadStatusForItem === 'error' ? '#F44336' : '#A259FF', 
+                            marginRight: 8 
+                          }}
+                          placeholder="Enter file name to upload..."
+                          placeholderTextColor="#A0A0A0"
+                          value={uploadingId === item.id ? uploadText : ''}
+                          onChangeText={text => {
+                            setUploadText(text);
+                            setUploadingId(item.id);
+                          }}
+                          onFocus={() => setUploadingId(item.id)}
+                          editable={uploadStatusForItem !== 'uploading'}
+                        />
+                        <TouchableOpacity 
+                          style={{ 
+                            flexDirection: 'row', 
+                            alignItems: 'center', 
+                            backgroundColor: uploadStatusForItem === 'uploading' ? '#666' : uploadStatusForItem === 'success' ? '#4ADE80' : uploadStatusForItem === 'error' ? '#F44336' : '#4ADE80', 
+                            borderRadius: 8, 
+                            paddingVertical: 8, 
+                            paddingHorizontal: 14 
+                          }} 
+                          onPress={() => handleAssignmentUpload(item.id)}
+                          disabled={uploadStatusForItem === 'uploading'}
+                        >
+                          {uploadStatusForItem === 'uploading' ? (
+                            <ActivityIndicator size="small" color="#fff" />
+                          ) : uploadStatusForItem === 'success' ? (
+                            <FontAwesome name="check" size={16} color="#fff" />
+                          ) : uploadStatusForItem === 'error' ? (
+                            <FontAwesome name="times" size={16} color="#fff" />
+                          ) : (
+                            <FontAwesome name="upload" size={16} color="#fff" />
+                          )}
+                          <Text style={{ color: '#fff', fontSize: 14, marginLeft: 6, fontWeight: '500' }}>
+                            {uploadStatusForItem === 'uploading' ? 'Uploading...' : 
+                             uploadStatusForItem === 'success' ? 'Success' : 
+                             uploadStatusForItem === 'error' ? 'Failed' : 'Upload'}
+                          </Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                    <TouchableOpacity 
+                      style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#A259FF', borderRadius: 8, paddingVertical: 8, paddingHorizontal: 14, marginLeft: 12, alignSelf: 'flex-start' }} 
+                      onPress={() => handleAssignmentDownload(item.file)}
+                    >
+                      <FontAwesome name="download" size={22} color="#fff" />
+                      <Text style={{ color: '#fff', fontSize: 14, marginLeft: 6, fontWeight: '500' }}>Download</Text>
+                    </TouchableOpacity>
+                  </View>
+                );
+              })}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Attendance Modal Popup */}
+      <Modal
+        visible={attendanceModalVisible}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setAttendanceModalVisible(false)}
+      >
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'center', alignItems: 'center' }}>
+          <View style={{ backgroundColor: '#23262F', borderRadius: 18, padding: 24, width: '90%', maxHeight: '90%' }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <Text style={{ color: '#fff', fontSize: 20, fontWeight: 'bold' }}>Attendance</Text>
+              <TouchableOpacity onPress={() => setAttendanceModalVisible(false)}>
+                <FontAwesome name="times" size={22} color="#B0B0B0" />
+              </TouchableOpacity>
+            </View>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <View style={{ alignItems: 'center', marginBottom: 18 }}>
+                <Text style={{ color: '#A0A0A0', fontSize: 15 }}>Overall Attendance</Text>
+                <Text style={{ color: '#fff', fontSize: 38, fontWeight: 'bold', marginBottom: 8 }}>{OVERALL_ATTENDANCE}%</Text>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', width: '80%', marginTop: 8, marginBottom: 2 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <FontAwesome name="check-circle" size={16} color="#4ADE80" style={{ marginRight: 6 }} />
+                    <Text style={{ color: '#A0A0A0', fontSize: 13 }}>Present</Text>
+                  </View>
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <FontAwesome name="times-circle" size={16} color="#F472B6" style={{ marginRight: 6 }} />
+                    <Text style={{ color: '#A0A0A0', fontSize: 13 }}>Absent</Text>
+                  </View>
+                </View>
+                <View style={{ flexDirection: 'row', width: '80%', height: 10, backgroundColor: '#181A20', borderRadius: 6, overflow: 'hidden', marginBottom: 4 }}>
+                  <View style={{ width: `${(PRESENT / (PRESENT + ABSENT)) * 100}%`, backgroundColor: '#4ADE80', height: 10 }} />
+                  <View style={{ width: `${(ABSENT / (PRESENT + ABSENT)) * 100}%`, backgroundColor: '#F472B6', height: 10 }} />
+                </View>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', width: '80%' }}>
+                  <Text style={{ color: '#fff', fontWeight: 'bold' }}>{PRESENT}</Text>
+                  <Text style={{ color: '#fff', fontWeight: 'bold' }}>{ABSENT}</Text>
+                </View>
+              </View>
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', marginBottom: 12 }}>
+                {QUICK_STATS.map(stat => (
+                  <View key={stat.label} style={{ width: '48%', backgroundColor: '#181A20', borderRadius: 10, padding: 12, marginBottom: 8, alignItems: 'center' }}>
+                    <Text style={{ color: '#fff', fontSize: 18, fontWeight: 'bold' }}>{stat.value}</Text>
+                    <Text style={{ color: '#A0A0A0', fontSize: 13 }}>{stat.label}</Text>
+                  </View>
+                ))}
+              </View>
+              <Text style={{ color: '#fff', fontSize: 16, fontWeight: 'bold', marginBottom: 8 }}>Subject-wise Attendance</Text>
+              {SUBJECTS.map((s, idx) => {
+                const percent = Math.round((s.attended / s.total) * 100);
+                return (
+                  <View key={s.name} style={{ marginBottom: 8 }}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <Text style={{ color: '#fff', fontSize: 15 }}>{s.name}</Text>
+                      <Text style={{ color: '#A0A0A0', fontSize: 14 }}>{s.attended} / {s.total} ({percent}%)</Text>
+                    </View>
+                    {idx < SUBJECTS.length - 1 && <View style={{ height: 1, backgroundColor: '#333', marginVertical: 6 }} />}
+                  </View>
+                );
+              })}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Internal Score Modal Popup */}
+      <Modal
+        visible={scoreModalVisible}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setScoreModalVisible(false)}
+      >
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'center', alignItems: 'center' }}>
+          <View style={{ backgroundColor: '#23262F', borderRadius: 18, padding: 24, width: '90%', maxHeight: '90%' }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <Text style={{ color: '#fff', fontSize: 20, fontWeight: 'bold' }}>Internal Score</Text>
+              <TouchableOpacity onPress={() => setScoreModalVisible(false)}>
+                <FontAwesome name="times" size={22} color="#B0B0B0" />
+              </TouchableOpacity>
+            </View>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <View style={{ alignItems: 'center', marginBottom: 18 }}>
+                <Text style={{ color: '#A0A0A0', fontSize: 15 }}>Overall Score</Text>
+                <Text style={{ color: '#fff', fontSize: 38, fontWeight: 'bold', marginBottom: 8 }}>82</Text>
+                <Text style={{ color: '#A0A0A0', fontSize: 13, marginBottom: 12 }}>/ 100</Text>
+              </View>
+              <Text style={{ color: '#fff', fontSize: 16, fontWeight: 'bold', marginBottom: 8 }}>Subject Scores</Text>
+              {SUBJECT_SCORES.map((s, idx) => (
+                <View key={s.subject} style={{ marginBottom: 12 }}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
+                    <View style={{ width: 16, height: 16, borderRadius: 8, backgroundColor: s.color, marginRight: 10 }} />
+                    <Text style={{ color: '#fff', fontSize: 15, flex: 1 }}>{s.subject}</Text>
+                    <Text style={{ color: '#fff', fontSize: 15, fontWeight: 'bold', marginLeft: 8 }}>{s.score}</Text>
+                    <Text style={{ color: '#A0A0A0', fontSize: 13, marginLeft: 2 }}>/ {s.max}</Text>
+                  </View>
+                  <View style={{ height: 8, backgroundColor: '#181A20', borderRadius: 4, overflow: 'hidden', marginTop: 2 }}>
+                    <View style={{ width: `${(s.score / s.max) * 100}%`, height: 8, backgroundColor: s.color }} />
+                  </View>
+                </View>
+              ))}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Rank Modal Popup */}
+      <Modal
+        visible={rankModalVisible}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setRankModalVisible(false)}
+      >
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'center', alignItems: 'center' }}>
+          <View style={{ backgroundColor: '#23262F', borderRadius: 18, padding: 24, width: '90%', maxHeight: '90%' }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <Text style={{ color: '#fff', fontSize: 20, fontWeight: 'bold' }}>Current Rank</Text>
+              <TouchableOpacity onPress={() => setRankModalVisible(false)}>
+                <FontAwesome name="times" size={22} color="#B0B0B0" />
+              </TouchableOpacity>
+            </View>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              {/* Current Rank Overview */}
+              <View style={{ alignItems: 'center', marginBottom: 20 }}>
+                <Text style={{ color: '#A0A0A0', fontSize: 15 }}>Your Current Rank</Text>
+                <Text style={{ color: '#FFD700', fontSize: 42, fontWeight: 'bold', marginBottom: 4 }}>{RANKING_DATA.currentRank}</Text>
+                <Text style={{ color: '#A0A0A0', fontSize: 16 }}>out of {RANKING_DATA.totalStudents} students</Text>
+                
+                {/* Rank Change */}
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8 }}>
+                  <FontAwesome name="arrow-up" size={16} color="#4ADE80" style={{ marginRight: 6 }} />
+                  <Text style={{ color: '#4ADE80', fontSize: 16, fontWeight: 'bold' }}>{RANKING_DATA.rankChange}</Text>
+                  <Text style={{ color: '#A0A0A0', fontSize: 14, marginLeft: 4 }}>from last month</Text>
+                </View>
+              </View>
+
+              {/* Class Performance */}
+              <View style={{ backgroundColor: '#181A20', borderRadius: 12, padding: 16, marginBottom: 16 }}>
+                <Text style={{ color: '#fff', fontSize: 16, fontWeight: 'bold', marginBottom: 8 }}>Class Performance</Text>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
+                  <Text style={{ color: '#A0A0A0', fontSize: 14 }}>Class Average</Text>
+                  <Text style={{ color: '#fff', fontSize: 16, fontWeight: 'bold' }}>{RANKING_DATA.classAverage}%</Text>
+                </View>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <Text style={{ color: '#A0A0A0', fontSize: 14 }}>Top Rank</Text>
+                  <Text style={{ color: '#FFD700', fontSize: 16, fontWeight: 'bold' }}>{RANKING_DATA.topRank}</Text>
+                </View>
+              </View>
+
+              {/* Subject-wise Ranking */}
+              <Text style={{ color: '#fff', fontSize: 16, fontWeight: 'bold', marginBottom: 8 }}>Subject-wise Ranking</Text>
+              {RANKING_DATA.performance.map((subject, idx) => (
+                <View key={subject.subject} style={{ backgroundColor: '#181A20', borderRadius: 10, padding: 12, marginBottom: 8 }}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <Text style={{ color: '#fff', fontSize: 15, fontWeight: '600' }}>{subject.subject}</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                      <Text style={{ color: '#FFD700', fontSize: 16, fontWeight: 'bold', marginRight: 8 }}>#{subject.rank}</Text>
+                      <Text style={{ color: '#A0A0A0', fontSize: 13 }}>({subject.score}%)</Text>
+                    </View>
+                  </View>
+                </View>
+              ))}
+
+              {/* Recent Ranking History */}
+              <Text style={{ color: '#fff', fontSize: 16, fontWeight: 'bold', marginTop: 16, marginBottom: 8 }}>Recent Ranking History</Text>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
+                {RANKING_DATA.recentRanks.map((rank, idx) => (
+                  <View key={rank.month} style={{ alignItems: 'center', flex: 1 }}>
+                    <Text style={{ color: '#A0A0A0', fontSize: 12 }}>{rank.month}</Text>
+                    <Text style={{ color: '#FFD700', fontSize: 16, fontWeight: 'bold' }}>#{rank.rank}</Text>
+                  </View>
+                ))}
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
 
       {/* Profile Modal */}
       <Modal
@@ -794,6 +1196,102 @@ const styles = StyleSheet.create({
     textShadowColor: 'rgba(255,59,48,0.18)',
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 4,
+  },
+  resourceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#23262F',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 14,
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  resourceTitle: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  resourceFile: {
+    color: '#A0A0A0',
+    fontSize: 13,
+  },
+  downloadBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#A259FF',
+    borderRadius: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    marginLeft: 12,
+    alignSelf: 'flex-start',
+  },
+  downloadText: {
+    color: '#fff',
+    fontSize: 14,
+    marginLeft: 6,
+    fontWeight: '500',
+  },
+  assignmentRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: '#23262F',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 14,
+    shadowColor: '#000',
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  assignmentTitle: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  assignmentFile: {
+    color: '#A0A0A0',
+    fontSize: 13,
+    marginBottom: 2,
+  },
+  assignmentDue: {
+    color: '#FFD700',
+    fontSize: 13,
+    marginBottom: 8,
+  },
+  uploadRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+  },
+  uploadInput: {
+    flex: 1,
+    backgroundColor: '#181A20',
+    color: '#fff',
+    borderRadius: 8,
+    fontSize: 14,
+    padding: 8,
+    borderWidth: 1,
+    borderColor: '#A259FF',
+    marginRight: 8,
+  },
+  uploadBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#4ADE80',
+    borderRadius: 8,
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+  },
+  uploadText: {
+    color: '#fff',
+    fontSize: 14,
+    marginLeft: 6,
+    fontWeight: '500',
   },
 });
 

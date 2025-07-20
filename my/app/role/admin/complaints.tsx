@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -10,12 +10,16 @@ import {
   Animated,
   Modal,
   ScrollView,
+  SafeAreaView,
+  Platform,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 
 const { width } = Dimensions.get('window');
 
+// --- STYLING AND CONSTANTS ---
 const COLORS = {
   background: '#1E1E1E',
   card: '#2D2D2D',
@@ -26,6 +30,7 @@ const COLORS = {
   resolved: '#4CAF50',
   text: '#FFFFFF',
   textSecondary: '#B3B3B3',
+  input: '#3A3A3A',
 };
 
 const FILTERS = [
@@ -36,24 +41,34 @@ const FILTERS = [
   { key: 'urgent', label: 'Urgent' },
 ];
 
-const STATUS_COLORS: { [key: string]: string } = {
+const STATUS_COLORS = {
   urgent: COLORS.urgent,
   pending: COLORS.pending,
   progress: COLORS.progress,
   resolved: COLORS.resolved,
 };
 
+// --- MOCK DATA ---
+
 type ComplaintStatus = 'urgent' | 'pending' | 'progress' | 'resolved';
-type Complaint = {
+type ComplaintPriority = 'Low' | 'Medium' | 'High';
+
+interface ComplaintHistory {
+  date: string;
+  action: string;
+  by: string;
+}
+
+interface Complaint {
   id: string;
   status: ComplaintStatus;
   description: string;
   date: string;
-  priority: string;
+  priority: ComplaintPriority;
   customer: string;
-  history: { date: string; action: string; by: string }[];
+  history: ComplaintHistory[];
   attachments: any[];
-};
+}
 
 const MOCK_COMPLAINTS: Complaint[] = [
   {
@@ -63,9 +78,7 @@ const MOCK_COMPLAINTS: Complaint[] = [
     date: '2024-06-20',
     priority: 'High',
     customer: 'Amit Kumar',
-    history: [
-      { date: '2024-06-20', action: 'Submitted', by: 'Amit Kumar' },
-    ],
+    history: [{ date: '2024-06-20', action: 'Submitted', by: 'Amit Kumar' }],
     attachments: [],
   },
   {
@@ -75,9 +88,7 @@ const MOCK_COMPLAINTS: Complaint[] = [
     date: '2024-06-19',
     priority: 'Medium',
     customer: 'Priya Singh',
-    history: [
-      { date: '2024-06-19', action: 'Submitted', by: 'Priya Singh' },
-    ],
+    history: [{ date: '2024-06-19', action: 'Submitted', by: 'Priya Singh' }],
     attachments: [],
   },
   {
@@ -108,7 +119,8 @@ const MOCK_COMPLAINTS: Complaint[] = [
   },
 ];
 
-function getStatusLabel(status: ComplaintStatus) {
+// --- HELPER FUNCTIONS ---
+function getStatusLabel(status: ComplaintStatus): string {
   switch (status) {
     case 'urgent': return 'Urgent';
     case 'pending': return 'Pending';
@@ -118,41 +130,139 @@ function getStatusLabel(status: ComplaintStatus) {
   }
 }
 
+// --- MAIN COMPONENT ---
 export default function ComplaintsPage() {
-  const [selectedFilter, setSelectedFilter] = useState('all');
-  const [search, setSearch] = useState('');
-  const [modalVisible, setModalVisible] = useState(false);
+  // --- STATE MANAGEMENT ---
+  const [complaints, setComplaints] = useState<Complaint[]>(MOCK_COMPLAINTS);
+  const [selectedFilter, setSelectedFilter] = useState<string>('all');
+  const [search, setSearch] = useState<string>('');
+  
+  // Modal States
+  const [detailModalVisible, setDetailModalVisible] = useState<boolean>(false);
+  const [addModalVisible, setAddModalVisible] = useState<boolean>(false);
+  
+  // Data States
   const [selectedComplaint, setSelectedComplaint] = useState<Complaint | null>(null);
-  const [fabAnim] = useState(new Animated.Value(1));
+  
+  // New Complaint Form State
+  const [newDescription, setNewDescription] = useState<string>('');
+  const [newCustomer, setNewCustomer] = useState<string>('');
+  const [newPriority, setNewPriority] = useState<ComplaintPriority>('Medium');
 
-  const filteredComplaints = MOCK_COMPLAINTS.filter(c =>
-    (selectedFilter === 'all' || c.status === selectedFilter) &&
-    (c.id.toLowerCase().includes(search.toLowerCase()) || c.description.toLowerCase().includes(search.toLowerCase()))
-  );
+  // Animation State
+  const [fabAnim] = useState<Animated.Value>(new Animated.Value(1));
 
-  const handleFabPress = () => {
+  // --- DERIVED STATE (FILTERING) ---
+  const filteredComplaints = useMemo(() =>
+    complaints.filter((c: Complaint) =>
+      (selectedFilter === 'all' || c.status === selectedFilter) &&
+      (c.id.toLowerCase().includes(search.toLowerCase()) || 
+       c.description.toLowerCase().includes(search.toLowerCase()) ||
+       c.customer.toLowerCase().includes(search.toLowerCase()))
+    ), [complaints, selectedFilter, search]);
+
+  // --- HANDLERS ---
+  const handleUpdateComplaint = (
+    complaintId: string,
+    newStatus: ComplaintStatus,
+    notes: string = ''
+  ): void => {
+      setComplaints((prevComplaints: Complaint[]) => {
+          const updatedComplaints = prevComplaints.map((c: Complaint) => {
+              if (c.id === complaintId) {
+                  const newHistory: ComplaintHistory[] = [...c.history, {
+                      date: new Date().toISOString().split('T')[0],
+                      action: `Status changed to ${getStatusLabel(newStatus)}. ${notes ? `Notes: ${notes}` : ''}`,
+                      by: 'Admin'
+                  }];
+                  return { ...c, status: newStatus, history: newHistory };
+              }
+              return c;
+          });
+          return updatedComplaints;
+      });
+      // To ensure the selected complaint in the modal also reflects the change immediately
+      setSelectedComplaint((prev) => prev ? { ...prev, status: newStatus } : null);
+  };
+  
+  const handleAddNewComplaint = (): void => {
+      if (!newDescription || !newCustomer) {
+          Alert.alert('Missing Information', 'Please fill out both description and customer name.');
+          return;
+      }
+      const newId = `CMP${(complaints.length + 1).toString().padStart(3, '0')}`;
+      const newComplaint: Complaint = {
+          id: newId,
+          status: 'pending',
+          description: newDescription,
+          date: new Date().toISOString().split('T')[0],
+          priority: newPriority,
+          customer: newCustomer,
+          history: [{ date: new Date().toISOString().split('T')[0], action: 'Submitted', by: newCustomer }],
+          attachments: [],
+      };
+      setComplaints((prev) => [newComplaint, ...prev]);
+      setAddModalVisible(false);
+      // Reset form
+      setNewDescription('');
+      setNewCustomer('');
+      setNewPriority('Medium');
+  };
+
+  const handleFabPress = (): void => {
     Animated.sequence([
       Animated.timing(fabAnim, { toValue: 0.92, duration: 100, useNativeDriver: true }),
       Animated.timing(fabAnim, { toValue: 1, duration: 180, useNativeDriver: true }),
-    ]).start();
-    // Add new complaint logic here
+    ]).start(() => setAddModalVisible(true));
   };
 
-  const handleCardPress = (complaint: Complaint) => {
+  const handleCardPress = (complaint: Complaint): void => {
     setSelectedComplaint(complaint);
-    setModalVisible(true);
+    setDetailModalVisible(true);
   };
+  
+  const handleQuickResolve = (complaintId: string): void => {
+      handleUpdateComplaint(complaintId, 'resolved');
+      Alert.alert('Success', `Complaint ${complaintId} marked as resolved.`);
+  }
 
-  // Swipe actions would be implemented with a library like react-native-gesture-handler or react-native-swipe-list-view
-  // For now, show placeholder buttons for Mark Resolved and Assign
+  // --- RENDER METHODS ---
+  const renderComplaintCard = ({ item }: { item: Complaint }) => (
+    <TouchableOpacity
+      style={styles.complaintCard}
+      activeOpacity={0.85}
+      onPress={() => handleCardPress(item)}
+    >
+      <View style={[styles.statusDot, { backgroundColor: STATUS_COLORS[item.status] }]} />
+      <View style={{ flex: 1 }}>
+        <Text style={styles.complaintId}>{item.id}</Text>
+        <Text style={styles.complaintDesc} numberOfLines={2}>{item.description}</Text>
+        <View style={styles.complaintMetaRow}>
+          <Text style={styles.complaintDate}>{item.date}</Text>
+          <Text style={styles.complaintPriority}>{item.priority}</Text>
+        </View>
+      </View>
+      {item.status !== 'resolved' && (
+        <View style={styles.quickActions}>
+          <TouchableOpacity style={styles.quickActionBtn} onPress={() => handleQuickResolve(item.id)}>
+            <Ionicons name="checkmark-done" size={20} color={COLORS.resolved} />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.quickActionBtn} onPress={() => Alert.alert('Assign', `Assigning complaint ${item.id}...`)}>
+            <Ionicons name="person-add" size={20} color={COLORS.accent} />
+          </TouchableOpacity>
+        </View>
+      )}
+    </TouchableOpacity>
+  );
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={styles.container}>
       {/* Header */}
       <View style={styles.headerSection}>
         <Text style={styles.headerTitle}>Complaints Management</Text>
-        <Text style={styles.headerCount}>{MOCK_COMPLAINTS.length} Complaints</Text>
+        <Text style={styles.headerCount}>{complaints.length} Total Complaints</Text>
       </View>
+
       {/* Filter Controls */}
       <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.filterScroll}>
         {FILTERS.map(f => (
@@ -162,85 +272,48 @@ export default function ComplaintsPage() {
             onPress={() => setSelectedFilter(f.key)}
             activeOpacity={0.7}
           >
-            <View style={styles.filterChipTextWrapper}>
-              <Text
-                style={[
-                  styles.filterChipText,
-                  { opacity: selectedFilter === f.key ? 0 : 1 }
-                ]}
-              >
-                {f.label}
-              </Text>
-              <Text
-                style={[
-                  styles.filterChipTextActive,
-                  { opacity: selectedFilter === f.key ? 1 : 0, position: 'absolute', left: 0, right: 0 }
-                ]}
-              >
-                {f.label}
-              </Text>
-            </View>
+            <Text style={[styles.filterChipText, selectedFilter === f.key && styles.filterChipTextActive]}>
+              {f.label}
+            </Text>
           </TouchableOpacity>
         ))}
       </ScrollView>
+
+      {/* Search Bar */}
       <View style={styles.searchRow}>
         <View style={styles.searchBar}>
           <Ionicons name="search" size={18} color={COLORS.textSecondary} style={{ marginRight: 6 }} />
           <TextInput
             style={styles.searchInput}
-            placeholder="Search complaints..."
+            placeholder="Search by ID, description, customer..."
             placeholderTextColor={COLORS.textSecondary}
             value={search}
             onChangeText={setSearch}
           />
         </View>
-        <TouchableOpacity style={styles.filterIconBtn} activeOpacity={1}>
-          <Ionicons name="filter" size={22} color={COLORS.accent} />
-        </TouchableOpacity>
       </View>
+
       {/* Complaints List */}
       <FlatList
         data={filteredComplaints}
         keyExtractor={item => item.id}
-        contentContainerStyle={{ paddingBottom: 120 }}
-        renderItem={({ item }) => (
-          <TouchableOpacity
-            style={styles.complaintCard}
-            activeOpacity={0.85}
-            onPress={() => handleCardPress(item)}
-          >
-            <View style={[styles.statusDot, { backgroundColor: STATUS_COLORS[item.status] }]} />
-            <View style={{ flex: 1 }}>
-              <Text style={styles.complaintId}>{item.id}</Text>
-              <Text style={styles.complaintDesc} numberOfLines={2}>{item.description}</Text>
-              <View style={styles.complaintMetaRow}>
-                <Text style={styles.complaintDate}>{item.date}</Text>
-                <Text style={styles.complaintPriority}>{item.priority}</Text>
-              </View>
-            </View>
-            {/* Placeholder swipe actions */}
-            <View style={styles.quickActions}>
-              <TouchableOpacity style={styles.quickActionBtn}>
-                <Ionicons name="checkmark-done" size={20} color={COLORS.resolved} />
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.quickActionBtn}>
-                <Ionicons name="person-add" size={20} color={COLORS.accent} />
-              </TouchableOpacity>
-            </View>
-          </TouchableOpacity>
-        )}
+        renderItem={renderComplaintCard}
+        contentContainerStyle={{ paddingBottom: 120, paddingTop: 10 }}
         ListEmptyComponent={<Text style={styles.emptyText}>No complaints found.</Text>}
       />
+
+      {/* --- MODALS --- */}
+
       {/* Detail Modal */}
-      <Modal
-        visible={modalVisible}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setModalVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            {selectedComplaint && (
+      {selectedComplaint && (
+        <Modal
+          visible={detailModalVisible}
+          animationType="slide"
+          transparent
+          onRequestClose={() => setDetailModalVisible(false)}
+        >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
               <ScrollView>
                 <Text style={styles.modalTitle}>Complaint Details</Text>
                 <View style={styles.modalStatusRow}>
@@ -249,134 +322,162 @@ export default function ComplaintsPage() {
                 </View>
                 <Text style={styles.modalId}>ID: {selectedComplaint.id}</Text>
                 <Text style={styles.modalDesc}>{selectedComplaint.description}</Text>
+                
                 <Text style={styles.modalSection}>Customer Info</Text>
                 <Text style={styles.modalCustomer}>{selectedComplaint.customer}</Text>
+                
                 <Text style={styles.modalSection}>History</Text>
-                {selectedComplaint.history.map((h, idx) => (
+                {selectedComplaint.history.map((h: ComplaintHistory, idx: number) => (
                   <Text key={idx} style={styles.modalHistory}>{h.date} - {h.action} by {h.by}</Text>
                 ))}
-                <Text style={styles.modalSection}>Attachments</Text>
-                <Text style={styles.modalAttachment}>No attachments</Text>
-                <Text style={styles.modalSection}>Status Update</Text>
-                <TouchableOpacity style={styles.statusDropdown}><Text style={styles.statusDropdownText}>Change Status</Text></TouchableOpacity>
-                <Text style={styles.modalSection}>Resolution Notes</Text>
-                <TextInput style={styles.resolutionInput} placeholder="Add notes..." placeholderTextColor={COLORS.textSecondary} multiline />
-                <View style={styles.modalActionsRow}>
-                  <TouchableOpacity style={styles.modalActionBtn}><Text style={styles.modalActionText}>Update Status</Text></TouchableOpacity>
-                  <TouchableOpacity style={styles.modalActionBtn}><Text style={styles.modalActionText}>Mark Resolved</Text></TouchableOpacity>
-                  <TouchableOpacity style={styles.modalActionBtn}><Text style={styles.modalActionText}>Assign</Text></TouchableOpacity>
+                
+                <Text style={styles.modalSection}>Actions</Text>
+                 <View style={styles.modalActionsRow}>
+                  <TouchableOpacity style={styles.modalActionBtn} onPress={() => handleUpdateComplaint(selectedComplaint.id, 'progress')}>
+                    <Text style={styles.modalActionText}>In Progress</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={styles.modalActionBtn} onPress={() => handleUpdateComplaint(selectedComplaint.id, 'resolved')}>
+                    <Text style={styles.modalActionText}>Mark Resolved</Text>
+                  </TouchableOpacity>
                 </View>
-                <TouchableOpacity style={styles.modalCloseBtn} onPress={() => setModalVisible(false)}>
+
+                <TouchableOpacity style={styles.modalCloseBtn} onPress={() => setDetailModalVisible(false)}>
                   <Text style={styles.modalCloseText}>Close</Text>
                 </TouchableOpacity>
               </ScrollView>
-            )}
+            </View>
           </View>
-        </View>
+        </Modal>
+      )}
+
+      {/* Add New Complaint Modal */}
+      <Modal
+        visible={addModalVisible}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setAddModalVisible(false)}
+      >
+          <View style={styles.modalOverlay}>
+            <View style={styles.modalContent}>
+              <ScrollView>
+                 <Text style={styles.modalTitle}>Add New Complaint</Text>
+                 
+                 <Text style={styles.modalSection}>Description</Text>
+                 <TextInput 
+                    style={styles.resolutionInput} 
+                    placeholder="Enter complaint details..." 
+                    placeholderTextColor={COLORS.textSecondary} 
+                    multiline 
+                    value={newDescription}
+                    onChangeText={setNewDescription}
+                 />
+
+                 <Text style={styles.modalSection}>Customer Name</Text>
+                 <TextInput 
+                    style={styles.resolutionInput} 
+                    placeholder="e.g., Priya Singh" 
+                    placeholderTextColor={COLORS.textSecondary}
+                    value={newCustomer}
+                    onChangeText={setNewCustomer}
+                 />
+
+                 <Text style={styles.modalSection}>Priority</Text>
+                 {/* A real app might use a picker here */}
+                 <View style={styles.prioritySelector}>
+                    <TouchableOpacity onPress={() => setNewPriority('Low')} style={[styles.priorityBtn, newPriority === 'Low' && styles.priorityBtnActive]}><Text style={styles.priorityBtnText}>Low</Text></TouchableOpacity>
+                    <TouchableOpacity onPress={() => setNewPriority('Medium')} style={[styles.priorityBtn, newPriority === 'Medium' && styles.priorityBtnActive]}><Text style={styles.priorityBtnText}>Medium</Text></TouchableOpacity>
+                    <TouchableOpacity onPress={() => setNewPriority('High')} style={[styles.priorityBtn, newPriority === 'High' && styles.priorityBtnActive]}><Text style={styles.priorityBtnText}>High</Text></TouchableOpacity>
+                 </View>
+
+                 <TouchableOpacity style={[styles.modalActionBtn, {backgroundColor: COLORS.resolved, marginTop: 20}]} onPress={handleAddNewComplaint}>
+                    <Text style={styles.modalActionText}>Submit Complaint</Text>
+                 </TouchableOpacity>
+
+                 <TouchableOpacity style={styles.modalCloseBtn} onPress={() => setAddModalVisible(false)}>
+                  <Text style={styles.modalCloseText}>Cancel</Text>
+                </TouchableOpacity>
+              </ScrollView>
+            </View>
+          </View>
       </Modal>
+
       {/* Floating Action Button */}
-      <Animated.View style={[styles.fabContainer, { transform: [{ scale: fabAnim }] }]}> 
+      <Animated.View style={[styles.fabContainer, { transform: [{ scale: fabAnim }] }]}>
         <TouchableOpacity activeOpacity={0.8} onPress={handleFabPress}>
           <LinearGradient
             colors={[COLORS.accent, COLORS.progress]}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
+            start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
             style={styles.fab}
           >
             <Ionicons name="add" size={28} color={COLORS.text} />
           </LinearGradient>
         </TouchableOpacity>
       </Animated.View>
-    </View>
+    </SafeAreaView>
   );
 }
 
+// --- STYLESHEET ---
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: COLORS.background,
-    paddingTop: 36,
+    paddingTop: Platform.OS === 'android' ? 25 : 0,
   },
   headerSection: {
     alignItems: 'center',
-    marginBottom: 10,
+    paddingVertical: 10,
   },
   headerTitle: {
     color: COLORS.text,
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: '600',
-    marginBottom: 2,
   },
   headerCount: {
     color: COLORS.textSecondary,
     fontSize: 15,
-    marginBottom: 6,
+    marginTop: 4,
   },
   filterScroll: {
-    paddingHorizontal: 8,
-    marginBottom: 8,
+    paddingHorizontal: 12,
+    maxHeight: 50,
   },
   filterChip: {
     backgroundColor: COLORS.card,
-    borderRadius: 16,
-    paddingVertical: 7,
+    borderRadius: 18,
+    paddingVertical: 8,
+    paddingHorizontal: 16,
     marginRight: 8,
-    alignItems: 'center',
     justifyContent: 'center',
   },
   filterChipActive: {
     backgroundColor: COLORS.accent,
   },
-  filterChipTextWrapper: {
-    width: 110,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
   filterChipText: {
     color: COLORS.textSecondary,
     fontSize: 14,
     fontWeight: '500',
-    fontFamily: 'System',
-    includeFontPadding: false,
-    textAlignVertical: 'center',
   },
   filterChipTextActive: {
     color: COLORS.text,
-    fontSize: 14,
-    fontWeight: '500',
-    fontFamily: 'System',
-    includeFontPadding: false,
-    textAlignVertical: 'center',
   },
   searchRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 12,
-    marginBottom: 8,
+    paddingHorizontal: 16,
+    marginVertical: 10,
   },
   searchBar: {
-    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: COLORS.card,
     borderRadius: 12,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    marginRight: 10,
+    paddingHorizontal: 12,
+    height: 44,
   },
   searchInput: {
     flex: 1,
     color: COLORS.text,
     fontSize: 15,
-  },
-  filterIconBtn: {
-    backgroundColor: COLORS.card,
-    borderRadius: 20,
-    width: 40,
-    height: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 0,
+    height: '100%',
   },
   complaintCard: {
     flexDirection: 'row',
@@ -384,13 +485,13 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.card,
     borderRadius: 16,
     padding: 16,
-    marginHorizontal: 12,
+    marginHorizontal: 16,
     marginBottom: 12,
+    elevation: 3,
     shadowColor: '#000',
-    shadowOpacity: 0.10,
-    shadowRadius: 8,
+    shadowOpacity: 0.1,
+    shadowRadius: 5,
     shadowOffset: { width: 0, height: 2 },
-    elevation: 2,
   },
   statusDot: {
     width: 14,
@@ -402,17 +503,17 @@ const styles = StyleSheet.create({
     color: COLORS.text,
     fontSize: 16,
     fontWeight: '500',
-    marginBottom: 2,
   },
   complaintDesc: {
     color: COLORS.textSecondary,
     fontSize: 14,
-    marginBottom: 4,
+    marginTop: 4,
   },
   complaintMetaRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+    marginTop: 8,
   },
   complaintDate: {
     color: COLORS.textSecondary,
@@ -421,15 +522,14 @@ const styles = StyleSheet.create({
   complaintPriority: {
     color: COLORS.accent,
     fontSize: 13,
-    fontWeight: '500',
+    fontWeight: '600',
   },
   quickActions: {
     flexDirection: 'column',
     marginLeft: 10,
-    alignItems: 'center',
   },
   quickActionBtn: {
-    backgroundColor: COLORS.background,
+    backgroundColor: COLORS.input,
     borderRadius: 8,
     padding: 6,
     marginBottom: 6,
@@ -437,14 +537,13 @@ const styles = StyleSheet.create({
   emptyText: {
     color: COLORS.textSecondary,
     textAlign: 'center',
-    marginTop: 40,
+    marginTop: 50,
     fontSize: 16,
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(30,30,30,0.85)',
+    backgroundColor: 'rgba(0,0,0,0.7)',
     justifyContent: 'flex-end',
-    alignItems: 'center',
   },
   modalContent: {
     backgroundColor: COLORS.card,
@@ -456,9 +555,10 @@ const styles = StyleSheet.create({
   },
   modalTitle: {
     color: COLORS.text,
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: '600',
-    marginBottom: 8,
+    marginBottom: 16,
+    textAlign: 'center',
   },
   modalStatusRow: {
     flexDirection: 'row',
@@ -467,99 +567,83 @@ const styles = StyleSheet.create({
   },
   modalStatusLabel: {
     color: COLORS.text,
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: '500',
   },
   modalId: {
     color: COLORS.textSecondary,
     fontSize: 14,
-    marginBottom: 6,
+    marginBottom: 12,
   },
   modalDesc: {
     color: COLORS.text,
-    fontSize: 15,
-    marginBottom: 10,
+    fontSize: 16,
+    lineHeight: 22,
+    marginBottom: 16,
   },
   modalSection: {
     color: COLORS.accent,
     fontSize: 14,
     fontWeight: '600',
-    marginTop: 12,
-    marginBottom: 4,
+    marginTop: 16,
+    marginBottom: 8,
   },
   modalCustomer: {
     color: COLORS.text,
-    fontSize: 14,
-    marginBottom: 6,
+    fontSize: 15,
   },
   modalHistory: {
     color: COLORS.textSecondary,
     fontSize: 13,
-    marginBottom: 2,
-  },
-  modalAttachment: {
-    color: COLORS.textSecondary,
-    fontSize: 13,
-    marginBottom: 8,
-  },
-  statusDropdown: {
-    backgroundColor: COLORS.background,
-    borderRadius: 8,
-    padding: 10,
-    marginBottom: 10,
-    alignItems: 'center',
-  },
-  statusDropdownText: {
-    color: COLORS.textSecondary,
-    fontSize: 14,
+    marginBottom: 4,
   },
   resolutionInput: {
-    backgroundColor: COLORS.background,
+    backgroundColor: COLORS.input,
     color: COLORS.text,
     borderRadius: 8,
-    padding: 10,
-    fontSize: 14,
+    padding: 12,
+    fontSize: 15,
     minHeight: 60,
-    marginBottom: 10,
+    textAlignVertical: 'top',
   },
   modalActionsRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginBottom: 10,
+    justifyContent: 'space-around',
+    marginTop: 10,
   },
   modalActionBtn: {
     backgroundColor: COLORS.accent,
     borderRadius: 8,
-    paddingVertical: 10,
-    paddingHorizontal: 14,
-    marginRight: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    alignItems: 'center',
   },
   modalActionText: {
     color: COLORS.text,
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '600',
   },
   modalCloseBtn: {
     backgroundColor: COLORS.urgent,
     borderRadius: 8,
-    paddingVertical: 10,
+    paddingVertical: 12,
     alignItems: 'center',
-    marginTop: 10,
+    marginTop: 12,
   },
   modalCloseText: {
     color: COLORS.text,
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: '600',
   },
   fabContainer: {
     position: 'absolute',
-    bottom: 28,
-    right: 24,
-    shadowColor: COLORS.accent,
-    shadowOpacity: 0.25,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
+    bottom: 30,
+    right: 20,
     elevation: 8,
+    shadowColor: COLORS.accent,
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 4 },
   },
   fab: {
     width: 60,
@@ -568,4 +652,26 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-}); 
+  prioritySelector: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      marginBottom: 10,
+  },
+  priorityBtn: {
+      flex: 1,
+      padding: 12,
+      borderRadius: 8,
+      backgroundColor: COLORS.input,
+      alignItems: 'center',
+      marginHorizontal: 4,
+  },
+  priorityBtnActive: {
+      backgroundColor: COLORS.accent,
+      borderColor: COLORS.text,
+      borderWidth: 1,
+  },
+  priorityBtnText: {
+      color: COLORS.text,
+      fontWeight: '600',
+  }
+});
