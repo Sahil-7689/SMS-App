@@ -2,23 +2,13 @@ import React, { useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Image, Modal } from 'react-native';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 
-const OVERALL_ATTENDANCE = 84;
-const PRESENT = 37;
-const ABSENT = 20;
-
-const QUICK_STATS = [
-  { label: 'Total Classes', value: 47 },
-  { label: 'Classes Attended', value: 37 },
-  { label: 'Late Attended', value: 7 },
-  { label: 'Classes Missed', value: 20 },
-];
-
-const SUBJECTS = [
-  { name: 'Math', total: 12, attended: 10 },
-  { name: 'Science', total: 11, attended: 8 },
-  { name: 'English', total: 13, attended: 12 },
-  { name: 'Social Studies', total: 11, attended: 7 },
-];
+interface QuickStat { label: string; value: number; }
+interface Subject { name: string; total: number; attended: number; }
+const OVERALL_ATTENDANCE: number = 0; // TODO: Inject from API or context
+const PRESENT: number = 0; // TODO: Inject from API or context
+const ABSENT: number = 0; // TODO: Inject from API or context
+const QUICK_STATS: QuickStat[] = []; // TODO: Inject from API or context
+const SUBJECTS: Subject[] = []; // TODO: Inject from API or context
 
 export default function AttendanceScreen() {
   const [leaveNoteModalVisible, setLeaveNoteModalVisible] = useState(false);
@@ -113,7 +103,7 @@ export default function AttendanceScreen() {
       </View>
       {/* Quick Statistics */}
       <View style={styles.statsGrid}>
-        {QUICK_STATS.map((stat, idx) => (
+        {QUICK_STATS.length === 0 ? <Text style={{color:'#fff', textAlign:'center'}}>No stats available.</Text> : QUICK_STATS.map((stat, idx) => (
           <View key={stat.label} style={styles.statCard}>
             <Text style={styles.statValue}>{stat.value}</Text>
             <Text style={styles.statLabel}>{stat.label}</Text>
@@ -126,7 +116,7 @@ export default function AttendanceScreen() {
       {/* Subject-wise Breakdown */}
       <Text style={styles.sectionTitle}>Subject-wise Attendance</Text>
       <View style={styles.subjectList}>
-        {SUBJECTS.map((s, idx) => {
+        {SUBJECTS.length === 0 ? <Text style={{color:'#fff', textAlign:'center'}}>No subjects available.</Text> : SUBJECTS.map((s, idx) => {
           const percent = Math.round((s.attended / s.total) * 100);
           return (
             <View key={s.name}>

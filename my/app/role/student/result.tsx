@@ -2,17 +2,10 @@ import React from 'react';
 import { View, Text, FlatList, StyleSheet, Dimensions } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 
-const SUBJECTS = [
-  { name: 'Mathematics', score: 85 },
-  { name: 'English', score: 78 },
-  { name: 'Science', score: 82 },
-  { name: 'Social Science', score: 80 },
-  { name: 'Hindi', score: 88 },
-  { name: 'Computer Science', score: 84 },
-];
-
-const STUDENT_NAME = 'SHIN CHAN';
-const STUDENT_CLASS = 'Class 10A';
+interface Subject { name: string; score: number; }
+const SUBJECTS: Subject[] = []; // TODO: Inject subjects from API or context
+const STUDENT_NAME: string = ''; // TODO: Inject student name from API or context
+const STUDENT_CLASS: string = ''; // TODO: Inject student class from API or context
 
 const { width } = Dimensions.get('window');
 
@@ -26,21 +19,25 @@ export default function ResultScreen() {
         <Text style={styles.studentClass}>{STUDENT_CLASS}</Text>
       </View>
       {/* Academic Performance List */}
-      <FlatList
-        data={SUBJECTS}
-        keyExtractor={item => item.name}
-        contentContainerStyle={styles.listContent}
-        renderItem={({ item }) => (
-          <View style={styles.subjectRow}>
-            <View style={styles.subjectInfo}>
-              <Text style={styles.subjectName}>{item.name}</Text>
-              <Text style={styles.maxMarks}>Max: 100</Text>
+      {SUBJECTS.length === 0 ? (
+        <Text style={{color:'#fff', textAlign:'center'}}>No subjects available.</Text>
+      ) : (
+        <FlatList
+          data={SUBJECTS}
+          keyExtractor={item => item.name}
+          contentContainerStyle={styles.listContent}
+          renderItem={({ item }) => (
+            <View style={styles.subjectRow}>
+              <View style={styles.subjectInfo}>
+                <Text style={styles.subjectName}>{item.name}</Text>
+                <Text style={styles.maxMarks}>Max: 100</Text>
+              </View>
+              <Text style={styles.score}>{item.score}</Text>
             </View>
-            <Text style={styles.score}>{item.score}</Text>
-          </View>
-        )}
-        showsVerticalScrollIndicator={false}
-      />
+          )}
+          showsVerticalScrollIndicator={false}
+        />
+      )}
       {/* Bottom Card with Gradient */}
       <View style={styles.bottomCardContainer}>
         <LinearGradient

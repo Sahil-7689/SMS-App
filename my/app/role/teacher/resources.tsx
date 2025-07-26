@@ -19,16 +19,9 @@ type Resource = {
   type: string;
   attachment?: ImagePickerAsset;
 };
-
-const RESOURCES: Resource[] = [
-  { id: 1, subject: 'Math', class: '10', file: 'AlgebraNotes.pdf', type: 'PDF' },
-  { id: 2, subject: 'Science', class: '10', file: 'LabManual.docx', type: 'DOCX' },
-  { id: 3, subject: 'English', class: '10', file: 'PoetryGuide.pdf', type: 'PDF' },
-  { id: 4, subject: 'SS', class: '10', file: 'HistoryMap.pptx', type: 'PPTX' },
-];
-
-const CLASSES = ['10', '11', '12'];
-const SUBJECTS = ['Math', 'Science', 'English', 'SS'];
+const RESOURCES: Resource[] = []; // TODO: Inject resources from API or context
+const CLASSES: string[] = []; // TODO: Inject classes from API or context
+const SUBJECTS: string[] = []; // TODO: Inject subjects from API or context
 
 export default function ResourcesPage() {
   const [selectedClass, setSelectedClass] = useState('10');

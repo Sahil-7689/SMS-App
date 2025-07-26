@@ -4,19 +4,14 @@ import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 
-const metrics = [
-  { icon: <FontAwesome name="graduation-cap" size={28} color="#fff" />, label: 'Total Students', value: '2500' },
-  { icon: <FontAwesome name="users" size={28} color="#fff" />, label: 'Total Teachers', value: '100' },
-  { icon: <FontAwesome name="user" size={28} color="#fff" />, label: 'Total Parents', value: '2000' },
-  { icon: <FontAwesome name="money" size={28} color="#fff" />, label: 'Total Earning', value: '₹2,50,00,000' },
-];
+// Add explicit types for placeholders
+interface Metric { icon: string; label: string; value: string; }
+interface Notice { text: string; }
+interface Event { title: string; date: string; desc: string; }
 
-const notices = [
-  'Parent-Teacher Meeting scheduled for next week',
-  'Summer vacation starts from July 1st',
-  'New library books available for students',
-  'Sports day registration opens tomorrow',
-];
+const metrics: Metric[] = []; // TODO: Inject metrics from API or context
+const notices: Notice[] = []; // TODO: Inject notices from API or context
+const events: Event[] = []; // TODO: Inject events from API or context
 
 const months = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -36,19 +31,12 @@ const AdminDashboard = () => {
   const [activeTab, setActiveTab] = useState('personal'); // 'personal' or 'account'
   const router = useRouter();
   const [profileImage, setProfileImage] = useState(require('../../../assets/images/icon.png'));
-  const [notices, setNotices] = useState([
-    'Parent-Teacher Meeting scheduled for next week',
-    'Summer vacation starts from July 1st',
-    'New library books available for students',
-    'Sports day registration opens tomorrow',
-  ]);
-  const [events, setEvents] = useState([
-    {
-      title: 'Cybersecurity Webinar',
-      date: 'June 25, 2024',
-      desc: 'Join us for an informative session on cybersecurity best practices for students and staff.'
-    }
-  ]);
+  // Remove hardcoded state for notices and events
+  // const [notices, setNotices] = useState([...]);
+  // const [events, setEvents] = useState([...]);
+  // Replace with:
+  const [noticesState, setNoticesState] = useState<Notice[]>(notices);
+  const [eventsState, setEventsState] = useState<Event[]>(events);
   const [noticeModalVisible, setNoticeModalVisible] = useState(false);
   const [eventModalVisible, setEventModalVisible] = useState(false);
   const [newNotice, setNewNotice] = useState('');
@@ -339,9 +327,9 @@ const AdminDashboard = () => {
       {/* Overview Cards */}
       <Text style={styles.sectionHeading}>Overview</Text>
       <View style={styles.metricsGrid}>
-        {metrics.map((metric, idx) => (
+        {metrics.length === 0 ? <Text style={{color:'#fff'}}>No metrics available.</Text> : metrics.map((metric, idx) => (
           <View key={idx} style={styles.metricCard}>
-            {metric.icon}
+            <FontAwesome name={metric.icon as any} size={28} color="#fff" />
             <Text style={styles.metricValue}>{metric.value}</Text>
             <Text style={styles.metricLabel}>{metric.label}</Text>
           </View>
@@ -384,7 +372,7 @@ const AdminDashboard = () => {
                 style={[styles.modalBtn, { backgroundColor: '#A259FF' }]}
                 onPress={() => {
                   if (newNotice.trim()) {
-                    setNotices([newNotice.trim(), ...notices]);
+                    setNoticesState([{ text: newNotice.trim() }, ...noticesState]);
                     setNewNotice('');
                     setNoticeModalVisible(false);
                   }
@@ -436,7 +424,7 @@ const AdminDashboard = () => {
                 style={[styles.modalBtn, { backgroundColor: '#A259FF' }]}
                 onPress={() => {
                   if (newEventTitle.trim() && newEventDate.trim() && newEventDesc.trim()) {
-                    setEvents([{ title: newEventTitle.trim(), date: newEventDate.trim(), desc: newEventDesc.trim() }, ...events]);
+                    setEventsState([{ title: newEventTitle.trim(), date: newEventDate.trim(), desc: newEventDesc.trim() }, ...eventsState]);
                     setNewEventTitle('');
                     setNewEventDate('');
                     setNewEventDesc('');
@@ -454,9 +442,9 @@ const AdminDashboard = () => {
       {/* Notice Board */}
       <Text style={styles.sectionHeading}>Notice Board</Text>
       <View style={styles.noticeBoard}>
-        {notices.map((notice, idx) => (
+        {noticesState.length === 0 ? <Text style={{color:'#fff'}}>No notices available.</Text> : noticesState.map((notice, idx) => (
           <View key={idx} style={styles.noticeItem}>
-            <Text style={styles.noticeText}>{`Notice ${idx + 1}. ${notice}`}</Text>
+            <Text style={styles.noticeText}>{`Notice ${idx + 1}. ${notice.text}`}</Text>
             <FontAwesome name="chevron-right" size={18} color="#A0A0A0" />
           </View>
         ))}
@@ -464,7 +452,7 @@ const AdminDashboard = () => {
 
       {/* Event Calendar */}
       <Text style={styles.sectionHeading}>Event Calendar</Text>
-      {events.map((event, idx) => (
+      {eventsState.length === 0 ? <Text style={{color:'#fff'}}>No events available.</Text> : eventsState.map((event, idx) => (
         <View style={styles.eventCard} key={idx}>
           <Text style={styles.eventTitle}>{event.title}</Text>
           <Text style={styles.eventDate}>{event.date}</Text>

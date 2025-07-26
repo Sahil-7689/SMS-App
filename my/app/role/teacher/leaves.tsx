@@ -46,44 +46,8 @@ const STATUS_COLORS: { [key: string]: string } = {
   rejected: COLORS.rejected,
 };
 
-const MOCK_LEAVES = [
-  {
-    id: 'L001',
-    name: 'Ms. Sharma',
-    photo: require('../../../assets/images/icon.png'),
-    start: '2024-06-20',
-    end: '2024-06-22',
-    type: 'Sick Leave',
-    status: 'pending',
-  },
-  {
-    id: 'L002',
-    name: 'Mr. Verma',
-    photo: require('../../../assets/images/icon.png'),
-    start: '2024-06-15',
-    end: '2024-06-16',
-    type: 'Personal Leave',
-    status: 'approved',
-  },
-  {
-    id: 'L003',
-    name: 'Ms. Rao',
-    photo: require('../../../assets/images/icon.png'),
-    start: '2024-06-10',
-    end: '2024-06-12',
-    type: 'Sick Leave',
-    status: 'rejected',
-  },
-  {
-    id: 'L004',
-    name: 'Mr. Singh',
-    photo: require('../../../assets/images/icon.png'),
-    start: '2024-06-25',
-    end: '2024-06-27',
-    type: 'Personal Leave',
-    status: 'pending',
-  },
-];
+interface Leave { id: string; name: string; photo: any; start: string; end: string; type: string; status: string; }
+const MOCK_LEAVES: Leave[] = []; // TODO: Inject leaves from API or context
 
 export default function TeacherLeavesPage() {
   const [selectedFilter, setSelectedFilter] = useState('all');

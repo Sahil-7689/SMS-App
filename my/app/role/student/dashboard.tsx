@@ -1,78 +1,40 @@
+// Corrected code for: sahil-7689/sms-app/SMS-App-main/my/app/role/student/dashboard.tsx
+
 import React, { useState } from "react";
 import { View, Text, StyleSheet, TextInput, Image, TouchableOpacity, ScrollView, FlatList, Modal, Animated, Easing, Pressable, Platform, Vibration, Alert, ActivityIndicator } from "react-native";
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from "expo-router";
 
-const notices = [
-  { id: '1', icon: 'bullhorn' as const, title: 'Exam Schedule Released', desc: 'Mid-term exams start from 15th June.' },
-  { id: '2', icon: 'calendar-check-o' as const, title: 'Holiday Notice', desc: 'School closed on 21st June for festival.' },
-  { id: '3', icon: 'info-circle' as const, title: 'Fee Reminder', desc: 'Last date for fee payment is 25th June.' },
-];
-
-const notifications = [
-  { id: '1', text: 'Math assignment due tomorrow.' },
-  { id: '2', text: 'Science webinar on Friday.' },
-];
-
-const mockResources = [
-  { id: '1', title: 'Physics Notes - Chapter 1', file: 'physics_ch1.pdf' },
-  { id: '2', title: 'Maths Formula Sheet', file: 'maths_formulas.pdf' },
-  { id: '3', title: 'English Reading Material', file: 'english_reading.pdf' },
-];
-const mockAssignments = [
-  { id: '1', title: 'Math Assignment 1', file: 'math_assignment1.pdf', due: '2024-06-20' },
-  { id: '2', title: 'Science Project', file: 'science_project.pdf', due: '2024-06-22' },
-  { id: '3', title: 'English Essay', file: 'english_essay.pdf', due: '2024-06-25' },
-];
-
-const [uploadText, setUploadText] = useState('');
-const [uploadingId, setUploadingId] = useState<string | null>(null);
-const [uploadedFiles, setUploadedFiles] = useState<{[key: string]: string}>({});
-const [uploadStatus, setUploadStatus] = useState<{[key: string]: 'idle' | 'uploading' | 'success' | 'error'}>({});
-
-const handleResourceDownload = (file: string) => {
-  Alert.alert('Download', `Pretend downloading: ${file}`);
-};
-const handleAssignmentDownload = (file: string) => {
-  Alert.alert('Download', `Pretend downloading: ${file}`);
-};
-const handleAssignmentUpload = (assignmentId: string) => {
-  if (!uploadText) {
-    Alert.alert('Error', 'Please enter a file name to upload.');
-    return;
-  }
-  
-  setUploadStatus(prev => ({ ...prev, [assignmentId]: 'uploading' }));
-  
-  // Simulate file upload
-  setTimeout(() => {
-    const success = Math.random() > 0.2; // 80% success rate
-    
-    if (success) {
-      setUploadedFiles(prev => ({ ...prev, [assignmentId]: uploadText }));
-      setUploadStatus(prev => ({ ...prev, [assignmentId]: 'success' }));
-      Alert.alert('Success', `File "${uploadText}" uploaded successfully!`);
-      
-      // Reset status after 3 seconds
-      setTimeout(() => {
-        setUploadStatus(prev => ({ ...prev, [assignmentId]: 'idle' }));
-      }, 3000);
-    } else {
-      setUploadStatus(prev => ({ ...prev, [assignmentId]: 'error' }));
-      Alert.alert('Error', 'Upload failed. Please try again.');
-      
-      // Reset status after 3 seconds
-      setTimeout(() => {
-        setUploadStatus(prev => ({ ...prev, [assignmentId]: 'idle' }));
-      }, 3000);
-    }
-    
-    setUploadingId(null);
-    setUploadText('');
-  }, 1500);
-};
-
+// Add explicit types for placeholders
+interface Notice { id: string; icon: string; title: string; desc: string; }
+interface Notification { id: string; text: string; }
+interface Resource { id: string; title: string; file: string; }
+interface Assignment { id: string; title: string; file: string; due: string; }
+interface SubjectScore { subject: string; score: number; max: number; color: string; }
+interface StudentDetails {
+  name?: string;
+  email?: string;
+  phone?: string;
+  role?: string;
+  class?: string;
+  status?: string;
+  fullName?: string;
+  dateOfBirth?: string;
+  gender?: string;
+  nationality?: string;
+  address?: string;
+  displayName?: string;
+  accountCreated?: string;
+  lastLogin?: string;
+  membershipStatus?: string;
+  accountVerification?: string;
+  languagePreference?: string;
+}
+const notices: Notice[] = []; // TODO: Inject notices from API or context
+const notifications: Notification[] = []; // TODO: Inject notifications from API or context
+const mockResources: Resource[] = []; // TODO: Inject resources from API or context
+const mockAssignments: Assignment[] = []; // TODO: Inject assignments from API or context
 const OVERALL_ATTENDANCE = 84;
 const PRESENT = 37;
 const ABSENT = 20;
@@ -89,14 +51,8 @@ const SUBJECTS = [
   { name: 'Social Studies', total: 11, attended: 7 },
 ];
 
-const SUBJECT_SCORES = [
-  { subject: 'Math', score: 92, max: 100, color: '#A259FF' },
-  { subject: 'Science', score: 85, max: 100, color: '#4ADE80' },
-  { subject: 'English', score: 78, max: 100, color: '#60A5FA' },
-  { subject: 'Social Studies', score: 88, max: 100, color: '#F472B6' },
-];
+const SUBJECT_SCORES: SubjectScore[] = []; // TODO: Inject subject scores from API or context
 
-// Add ranking data constants:
 const RANKING_DATA = {
   currentRank: 7,
   totalStudents: 45,
@@ -119,39 +75,67 @@ const RANKING_DATA = {
 };
 
 const StudentScreen: React.FC = () => {
+  const [uploadText, setUploadText] = useState('');
+  const [uploadingId, setUploadingId] = useState<string | null>(null);
+  const [uploadedFiles, setUploadedFiles] = useState<{ [key: string]: string }>({});
+  const [uploadStatus, setUploadStatus] = useState<{ [key: string]: 'idle' | 'uploading' | 'success' | 'error' }>({});
   const [profileVisible, setProfileVisible] = useState(false);
   const [scaleAnim] = useState(new Animated.Value(0.95));
   const [opacityAnim] = useState(new Animated.Value(0));
-  const [activeTab, setActiveTab] = useState('personal'); // 'personal' or 'account'
+  const [activeTab, setActiveTab] = useState('personal');
   const router = useRouter();
   const [assignmentModalVisible, setAssignmentModalVisible] = useState(false);
   const [attendanceModalVisible, setAttendanceModalVisible] = useState(false);
   const [scoreModalVisible, setScoreModalVisible] = useState(false);
-  // Add state for rank modal:
   const [rankModalVisible, setRankModalVisible] = useState(false);
 
-  // Example student details with expanded information
-  const studentDetails = {
-    name: 'Sarah Johnson',
-    email: 'sarah.johnson@school.edu',
-    phone: '+91 98765 43210',
-    role: 'Student',
-    class: 'Class 10-B',
-    status: 'Active',
-    // Personal Details
-    fullName: 'Sarah Elizabeth Johnson',
-    dateOfBirth: '12 August 2008',
-    gender: 'Female',
-    nationality: 'Indian',
-    address: 'Mumbai, Maharashtra, India',
-    // Account Details
-    displayName: 'Student_Sarah',
-    accountCreated: '1 September 2023',
-    lastLogin: '1 hour ago',
-    membershipStatus: 'Standard',
-    accountVerification: 'Verified',
-    languagePreference: 'English',
+  // Calendar state
+  const [currentMonth, setCurrentMonth] = useState(new Date().getMonth()); // 0-indexed
+  const [currentYear, setCurrentYear] = useState(new Date().getFullYear());
+  const today = new Date();
+
+  // Helper functions
+  const getDaysInMonth = (month: number, year: number) => new Date(year, month + 1, 0).getDate();
+  const getFirstDayOfMonth = (month: number, year: number) => new Date(year, month, 1).getDay(); // 0=Sun
+  const daysInMonth = getDaysInMonth(currentMonth, currentYear);
+  const firstDay = getFirstDayOfMonth(currentMonth, currentYear);
+  const monthNames = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'
+  ];
+
+  const handleResourceDownload = (file: string) => {
+    Alert.alert('Download', `Pretend downloading: ${file}`);
   };
+
+  const handleAssignmentDownload = (file: string) => {
+    Alert.alert('Download', `Pretend downloading: ${file}`);
+  };
+
+  const handleAssignmentUpload = (assignmentId: string) => {
+    if (!uploadText) {
+      Alert.alert('Error', 'Please enter a file name to upload.');
+      return;
+    }
+    setUploadStatus(prev => ({ ...prev, [assignmentId]: 'uploading' }));
+    setTimeout(() => {
+      const success = Math.random() > 0.2;
+      if (success) {
+        setUploadedFiles(prev => ({ ...prev, [assignmentId]: uploadText }));
+        setUploadStatus(prev => ({ ...prev, [assignmentId]: 'success' }));
+        Alert.alert('Success', `File "${uploadText}" uploaded successfully!`);
+        setTimeout(() => setUploadStatus(prev => ({ ...prev, [assignmentId]: 'idle' })), 3000);
+      } else {
+        setUploadStatus(prev => ({ ...prev, [assignmentId]: 'error' }));
+        Alert.alert('Error', 'Upload failed. Please try again.');
+        setTimeout(() => setUploadStatus(prev => ({ ...prev, [assignmentId]: 'idle' })), 3000);
+      }
+      setUploadingId(null);
+      setUploadText('');
+    }, 1500);
+  };
+
+  const studentDetails: StudentDetails = {}; // TODO: Inject student details from API or context
 
   const handleLogout = async () => {
     Vibration.vibrate(10);
@@ -164,43 +148,24 @@ const StudentScreen: React.FC = () => {
 
   const openProfile = () => {
     setProfileVisible(true);
-    scaleAnim.setValue(0.95);
-    opacityAnim.setValue(0);
     Animated.parallel([
-      Animated.timing(opacityAnim, {
-        toValue: 1,
-        duration: 300,
-        easing: Easing.in(Easing.ease),
-        useNativeDriver: true,
-      }),
-      Animated.timing(scaleAnim, {
-        toValue: 1,
-        duration: 300,
-        easing: Easing.in(Easing.ease),
-        useNativeDriver: true,
-      })
+      Animated.timing(opacityAnim, { toValue: 1, duration: 300, easing: Easing.in(Easing.ease), useNativeDriver: true }),
+      Animated.timing(scaleAnim, { toValue: 1, duration: 300, easing: Easing.in(Easing.ease), useNativeDriver: true })
     ]).start();
   };
 
   const closeProfile = () => {
     Animated.parallel([
-      Animated.timing(opacityAnim, {
-        toValue: 0,
-        duration: 200,
-        useNativeDriver: true,
-      }),
-      Animated.timing(scaleAnim, {
-        toValue: 0.95,
-        duration: 200,
-        useNativeDriver: true,
-      })
+      Animated.timing(opacityAnim, { toValue: 0, duration: 200, useNativeDriver: true }),
+      Animated.timing(scaleAnim, { toValue: 0.95, duration: 200, useNativeDriver: true })
     ]).start(() => setProfileVisible(false));
   };
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 32 }}>
-      {/* Header Section */}
-      <View style={styles.headerSection}>
+      {/* ... (The rest of the JSX remains exactly the same) ... */}
+            {/* Header Section */}
+            <View style={styles.headerSection}>
         <View style={styles.headerRow}>
           <Text style={styles.headerTitle}>StudentDashboard</Text>
           <TouchableOpacity>
@@ -265,7 +230,7 @@ const StudentScreen: React.FC = () => {
         <Text style={styles.sectionTitle}>Notice Board</Text>
         {notices.map(n => (
           <View key={n.id} style={styles.noticeCard}>
-            <FontAwesome name={n.icon} size={22} color="#A259FF" style={{ marginRight: 12 }} />
+            <FontAwesome name={n.icon as any} size={22} color="#A259FF" style={{ marginRight: 12 }} />
             <View>
               <Text style={styles.noticeTitle}>{n.title}</Text>
               <Text style={styles.noticeDesc}>{n.desc}</Text>
@@ -281,18 +246,46 @@ const StudentScreen: React.FC = () => {
           <FontAwesome name="video-camera" size={20} color="#FFD700" style={{ marginRight: 10 }} />
           <Text style={styles.eventText}>Webinar: Science & Technology - 18th June, 10:00 AM</Text>
         </View>
-        <Text style={[styles.sectionTitle, { marginTop: 18 }]}>June 2024</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 18 }}>
+          <TouchableOpacity onPress={() => {
+            if (currentMonth === 0) {
+              setCurrentMonth(11);
+              setCurrentYear(currentYear - 1);
+            } else {
+              setCurrentMonth(currentMonth - 1);
+            }
+          }}>
+            <FontAwesome name="chevron-left" size={20} color="#fff" />
+          </TouchableOpacity>
+          <Text style={[styles.sectionTitle, { marginTop: 0 }]}>{monthNames[currentMonth]} {currentYear}</Text>
+          <TouchableOpacity onPress={() => {
+            if (currentMonth === 11) {
+              setCurrentMonth(0);
+              setCurrentYear(currentYear + 1);
+            } else {
+              setCurrentMonth(currentMonth + 1);
+            }
+          }}>
+            <FontAwesome name="chevron-right" size={20} color="#fff" />
+          </TouchableOpacity>
+        </View>
         <View style={styles.calendarRow}>
-          {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => (
+          {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(day => (
             <Text key={day} style={styles.calendarDay}>{day}</Text>
           ))}
         </View>
         <View style={styles.calendarGrid}>
-          {/* Example: 1st starts on Saturday, so 6 blanks */}
-          {Array.from({ length: 6 }).map((_, i) => <View key={'b'+i} style={styles.calendarCell} />)}
-          {Array.from({ length: 30 }).map((_, i) => {
+          {/* Blank days before the 1st */}
+          {Array.from({ length: firstDay }).map((_, i) => (
+            <View key={'b'+i} style={styles.calendarCell} />
+          ))}
+          {/* Days of the month */}
+          {Array.from({ length: daysInMonth }).map((_, i) => {
             const date = i + 1;
-            const isToday = date === 12; // Example: today is 12th
+            const isToday =
+              date === today.getDate() &&
+              currentMonth === today.getMonth() &&
+              currentYear === today.getFullYear();
             return (
               <View key={date} style={[styles.calendarCell, isToday && styles.calendarToday]}>
                 <Text style={[styles.calendarDate, isToday && styles.calendarDateToday]}>{date}</Text>
@@ -319,7 +312,7 @@ const StudentScreen: React.FC = () => {
         ))}
       </View>
 
-      {/* Assignment Modal Popup */}
+      {/* Modals */}
       <Modal
         visible={assignmentModalVisible}
         animationType="slide"
@@ -420,7 +413,6 @@ const StudentScreen: React.FC = () => {
         </View>
       </Modal>
 
-      {/* Attendance Modal Popup */}
       <Modal
         visible={attendanceModalVisible}
         animationType="slide"
@@ -484,7 +476,6 @@ const StudentScreen: React.FC = () => {
         </View>
       </Modal>
 
-      {/* Internal Score Modal Popup */}
       <Modal
         visible={scoreModalVisible}
         animationType="slide"
@@ -524,7 +515,6 @@ const StudentScreen: React.FC = () => {
         </View>
       </Modal>
 
-      {/* Rank Modal Popup */}
       <Modal
         visible={rankModalVisible}
         animationType="slide"
@@ -540,13 +530,11 @@ const StudentScreen: React.FC = () => {
               </TouchableOpacity>
             </View>
             <ScrollView showsVerticalScrollIndicator={false}>
-              {/* Current Rank Overview */}
               <View style={{ alignItems: 'center', marginBottom: 20 }}>
                 <Text style={{ color: '#A0A0A0', fontSize: 15 }}>Your Current Rank</Text>
                 <Text style={{ color: '#FFD700', fontSize: 42, fontWeight: 'bold', marginBottom: 4 }}>{RANKING_DATA.currentRank}</Text>
                 <Text style={{ color: '#A0A0A0', fontSize: 16 }}>out of {RANKING_DATA.totalStudents} students</Text>
                 
-                {/* Rank Change */}
                 <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8 }}>
                   <FontAwesome name="arrow-up" size={16} color="#4ADE80" style={{ marginRight: 6 }} />
                   <Text style={{ color: '#4ADE80', fontSize: 16, fontWeight: 'bold' }}>{RANKING_DATA.rankChange}</Text>
@@ -554,7 +542,6 @@ const StudentScreen: React.FC = () => {
                 </View>
               </View>
 
-              {/* Class Performance */}
               <View style={{ backgroundColor: '#181A20', borderRadius: 12, padding: 16, marginBottom: 16 }}>
                 <Text style={{ color: '#fff', fontSize: 16, fontWeight: 'bold', marginBottom: 8 }}>Class Performance</Text>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
@@ -567,9 +554,8 @@ const StudentScreen: React.FC = () => {
                 </View>
               </View>
 
-              {/* Subject-wise Ranking */}
               <Text style={{ color: '#fff', fontSize: 16, fontWeight: 'bold', marginBottom: 8 }}>Subject-wise Ranking</Text>
-              {RANKING_DATA.performance.map((subject, idx) => (
+              {RANKING_DATA.performance.map((subject) => (
                 <View key={subject.subject} style={{ backgroundColor: '#181A20', borderRadius: 10, padding: 12, marginBottom: 8 }}>
                   <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                     <Text style={{ color: '#fff', fontSize: 15, fontWeight: '600' }}>{subject.subject}</Text>
@@ -581,10 +567,9 @@ const StudentScreen: React.FC = () => {
                 </View>
               ))}
 
-              {/* Recent Ranking History */}
               <Text style={{ color: '#fff', fontSize: 16, fontWeight: 'bold', marginTop: 16, marginBottom: 8 }}>Recent Ranking History</Text>
               <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
-                {RANKING_DATA.recentRanks.map((rank, idx) => (
+                {RANKING_DATA.recentRanks.map((rank) => (
                   <View key={rank.month} style={{ alignItems: 'center', flex: 1 }}>
                     <Text style={{ color: '#A0A0A0', fontSize: 12 }}>{rank.month}</Text>
                     <Text style={{ color: '#FFD700', fontSize: 16, fontWeight: 'bold' }}>#{rank.rank}</Text>
@@ -596,7 +581,6 @@ const StudentScreen: React.FC = () => {
         </View>
       </Modal>
 
-      {/* Profile Modal */}
       <Modal
         visible={profileVisible}
         animationType="none"
@@ -611,12 +595,10 @@ const StudentScreen: React.FC = () => {
             onStartShouldSetResponder={() => true}
             onTouchEnd={e => e.stopPropagation()}
           >
-            {/* Close Button */}
             <TouchableOpacity style={styles.closeButton} onPress={closeProfile}>
               <FontAwesome name="times" size={20} color="#B0B0B0" />
             </TouchableOpacity>
 
-            {/* Header Section */}
             <View style={styles.profileHeader}>
               <TouchableOpacity activeOpacity={0.8} style={styles.profileAvatarWrapper}>
                 <Image source={require("../../../assets/images/icon.png")} style={styles.profileAvatar} />
@@ -633,10 +615,8 @@ const StudentScreen: React.FC = () => {
               </View>
             </View>
 
-            {/* Divider */}
             <View style={styles.profileDivider} />
 
-            {/* Tab Navigation */}
             <View style={styles.tabContainer}>
               <TouchableOpacity 
                 style={[styles.tabButton, activeTab === 'personal' && styles.activeTabButton]}
@@ -652,7 +632,6 @@ const StudentScreen: React.FC = () => {
               </TouchableOpacity>
             </View>
 
-            {/* Tab Content */}
             <ScrollView style={styles.tabContent} showsVerticalScrollIndicator={false}>
               {activeTab === 'personal' ? (
                 <View style={styles.personalDetails}>
@@ -725,7 +704,6 @@ const StudentScreen: React.FC = () => {
               )}
             </ScrollView>
 
-            {/* Footer */}
             <View style={styles.profileFooter}>
               <TouchableOpacity
                 style={styles.profileLogoutBtn}
@@ -1295,4 +1273,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default StudentScreen; 
+export default StudentScreen;

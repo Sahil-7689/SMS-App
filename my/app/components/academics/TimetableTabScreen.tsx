@@ -1,74 +1,36 @@
 import React from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 
-const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
-const periods = ['1', '2', '3', '4', '5', '6'];
-const timetable = [
-  [
-    { subject: 'Math', teacher: 'Dr. Vance' },
-    { subject: 'Physics', teacher: 'Dr. Hayes' },
-    { subject: 'Chemistry', teacher: 'Dr. Bennett' },
-    { subject: 'Math', teacher: 'Dr. Vance' },
-    { subject: 'Physics', teacher: 'Dr. Hayes' },
-    { subject: 'Chemistry', teacher: 'Dr. Bennett' },
-  ],
-  [
-    { subject: 'Physics', teacher: 'Dr. Hayes' },
-    { subject: 'Math', teacher: 'Dr. Vance' },
-    { subject: 'Chemistry', teacher: 'Dr. Bennett' },
-    { subject: 'Math', teacher: 'Dr. Vance' },
-    { subject: 'Physics', teacher: 'Dr. Hayes' },
-    { subject: 'Chemistry', teacher: 'Dr. Bennett' },
-  ],
-  [
-    { subject: 'Chemistry', teacher: 'Dr. Bennett' },
-    { subject: 'Math', teacher: 'Dr. Vance' },
-    { subject: 'Physics', teacher: 'Dr. Hayes' },
-    { subject: 'Math', teacher: 'Dr. Vance' },
-    { subject: 'Physics', teacher: 'Dr. Hayes' },
-    { subject: 'Chemistry', teacher: 'Dr. Bennett' },
-  ],
-  [
-    { subject: 'Math', teacher: 'Dr. Vance' },
-    { subject: 'Physics', teacher: 'Dr. Hayes' },
-    { subject: 'Chemistry', teacher: 'Dr. Bennett' },
-    { subject: 'Math', teacher: 'Dr. Vance' },
-    { subject: 'Physics', teacher: 'Dr. Hayes' },
-    { subject: 'Chemistry', teacher: 'Dr. Bennett' },
-  ],
-  [
-    { subject: 'Physics', teacher: 'Dr. Hayes' },
-    { subject: 'Math', teacher: 'Dr. Vance' },
-    { subject: 'Chemistry', teacher: 'Dr. Bennett' },
-    { subject: 'Math', teacher: 'Dr. Vance' },
-    { subject: 'Physics', teacher: 'Dr. Hayes' },
-    { subject: 'Chemistry', teacher: 'Dr. Bennett' },
-  ],
-];
+const days: string[] = []; // TODO: Inject days from API or context
+const periods: string[] = []; // TODO: Inject periods from API or context
+interface TimetableSlot { subject: string; teacher: string; }
+const timetable: TimetableSlot[][] = []; // TODO: Inject timetable from API or context
 
 export default function TimetableTabScreen({ search }: { search: string }) {
   return (
     <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 32 }}>
       <Text style={styles.heading}>Weekly Timetable</Text>
-      <View style={styles.table}>
-        <View style={styles.row}>
-          <Text style={[styles.cell, styles.headerCell]}></Text>
-          {periods.map(p => (
-            <Text key={p} style={[styles.cell, styles.headerCell]}>{p}</Text>
-          ))}
-        </View>
-        {days.map((day, i) => (
-          <View key={day} style={styles.row}>
-            <Text style={[styles.cell, styles.headerCell]}>{day}</Text>
-            {timetable[i].map((slot, j) => (
-              <View key={j} style={styles.cell}>
-                <Text style={styles.subject}>{slot.subject}</Text>
-                <Text style={styles.teacher}>{slot.teacher}</Text>
-              </View>
+      {days.length === 0 || periods.length === 0 || timetable.length === 0 ? <Text style={{color:'#fff', textAlign:'center'}}>No timetable available.</Text> : (
+        <View style={styles.table}>
+          <View style={styles.row}>
+            <Text style={[styles.cell, styles.headerCell]}></Text>
+            {periods.map(p => (
+              <Text key={p} style={[styles.cell, styles.headerCell]}>{p}</Text>
             ))}
           </View>
-        ))}
-      </View>
+          {days.map((day, i) => (
+            <View key={day} style={styles.row}>
+              <Text style={[styles.cell, styles.headerCell]}>{day}</Text>
+              {timetable[i].map((slot, j) => (
+                <View key={j} style={styles.cell}>
+                  <Text style={styles.subject}>{slot.subject}</Text>
+                  <Text style={styles.teacher}>{slot.teacher}</Text>
+                </View>
+              ))}
+            </View>
+          ))}
+        </View>
+      )}
       <TouchableOpacity style={styles.downloadBtn}><Text style={styles.downloadBtnText}>Download Timetable</Text></TouchableOpacity>
     </ScrollView>
   );

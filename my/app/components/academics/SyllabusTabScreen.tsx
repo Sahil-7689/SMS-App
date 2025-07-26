@@ -1,17 +1,14 @@
 import React from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 
-const syllabi = [
-  { subject: 'Mathematics', updated: '2024-06-01', link: '#' },
-  { subject: 'Physics', updated: '2024-05-20', link: '#' },
-  { subject: 'Chemistry', updated: '2024-05-15', link: '#' },
-];
+interface Syllabus { subject: string; updated: string; link: string; }
+const syllabi: Syllabus[] = []; // TODO: Inject syllabi from API or context
 
 export default function SyllabusTabScreen({ search }: { search: string }) {
   return (
     <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 32 }}>
       <Text style={styles.heading}>Syllabus</Text>
-      {syllabi.map((s, i) => (
+      {syllabi.length === 0 ? <Text style={{color:'#fff', textAlign:'center'}}>No syllabi available.</Text> : syllabi.map((s, i) => (
         <View key={s.subject} style={styles.card}>
           <View style={styles.row}><Text style={styles.label}>Subject:</Text><Text style={styles.value}>{s.subject}</Text></View>
           <View style={styles.row}><Text style={styles.label}>Last Updated:</Text><Text style={styles.value}>{s.updated}</Text></View>

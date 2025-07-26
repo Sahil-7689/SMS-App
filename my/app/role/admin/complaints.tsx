@@ -70,54 +70,7 @@ interface Complaint {
   attachments: any[];
 }
 
-const MOCK_COMPLAINTS: Complaint[] = [
-  {
-    id: 'CMP001',
-    status: 'urgent',
-    description: 'Water leakage in classroom 10B. Needs immediate attention.',
-    date: '2024-06-20',
-    priority: 'High',
-    customer: 'Amit Kumar',
-    history: [{ date: '2024-06-20', action: 'Submitted', by: 'Amit Kumar' }],
-    attachments: [],
-  },
-  {
-    id: 'CMP002',
-    status: 'pending',
-    description: 'Broken window in library.',
-    date: '2024-06-19',
-    priority: 'Medium',
-    customer: 'Priya Singh',
-    history: [{ date: '2024-06-19', action: 'Submitted', by: 'Priya Singh' }],
-    attachments: [],
-  },
-  {
-    id: 'CMP003',
-    status: 'progress',
-    description: 'Projector not working in AV room.',
-    date: '2024-06-18',
-    priority: 'Low',
-    customer: 'Rahul Verma',
-    history: [
-      { date: '2024-06-18', action: 'Submitted', by: 'Rahul Verma' },
-      { date: '2024-06-19', action: 'Assigned', by: 'Admin' },
-    ],
-    attachments: [],
-  },
-  {
-    id: 'CMP004',
-    status: 'resolved',
-    description: 'Fan not working in staff room.',
-    date: '2024-06-15',
-    priority: 'Low',
-    customer: 'Sunita Rao',
-    history: [
-      { date: '2024-06-15', action: 'Submitted', by: 'Sunita Rao' },
-      { date: '2024-06-16', action: 'Resolved', by: 'Maintenance' },
-    ],
-    attachments: [],
-  },
-];
+const MOCK_COMPLAINTS: Complaint[] = []; // TODO: Inject complaints from API or context
 
 // --- HELPER FUNCTIONS ---
 function getStatusLabel(status: ComplaintStatus): string {

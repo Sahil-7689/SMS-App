@@ -10,7 +10,6 @@ import {
   Dimensions,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
 
 const { width } = Dimensions.get('window');
 
@@ -30,47 +29,16 @@ const COLORS = {
   success: '#4CAF50',
 };
 
-const mockStudent = {
-  name: 'Aarav Mehta',
-  id: 'STU1023',
-  class: '10-B',
-  age: 15,
-  contact: '+91 90000 00000',
-  emergency: '+91 91111 11111',
-  photo: require('../../../assets/images/icon.png'),
-  status: 'online',
-};
-
-const mockSubjects = [
-  { name: 'Mathematics', grade: 'A', progress: 0.92, color: COLORS.accent },
-  { name: 'Science', grade: 'B+', progress: 0.78, color: COLORS.accent2 },
-  { name: 'English', grade: 'A-', progress: 0.85, color: COLORS.accent3 },
-  { name: 'Social Science', grade: 'B', progress: 0.70, color: COLORS.accent4 },
-];
-
-const mockAttendance = {
-  percent: 92,
-  present: 21,
-  absent: 2,
-  late: 1,
-  total: 24,
-  monthly: [
-    { day: 1, status: 'present' }, { day: 2, status: 'present' }, { day: 3, status: 'absent' },
-    { day: 4, status: 'late' }, { day: 5, status: 'present' }, { day: 6, status: 'present' },
-    { day: 7, status: 'present' },
-  ],
-};
-
-const mockMessages = [
-  { id: 1, text: 'Parent: Please update on Aarav’s progress.', time: '09:12', unread: true },
-  { id: 2, text: 'Aarav: Submitted assignment.', time: 'Yesterday', unread: false },
-];
-
-const mockAlerts = [
-  { id: 1, type: 'alert', text: 'Medical emergency contact updated.', color: COLORS.alert },
-  { id: 2, type: 'info', text: 'Low score in Science test.', color: COLORS.info },
-  { id: 3, type: 'warning', text: 'Late to class twice this week.', color: COLORS.warning },
-];
+interface Student { name?: string; id?: string; class?: string; age?: number; contact?: string; emergency?: string; photo?: any; status?: string; }
+const mockStudent: Student = {}; // TODO: Inject student from API or context
+interface Subject { name: string; grade: string; progress: number; color: string; }
+const mockSubjects: Subject[] = []; // TODO: Inject subjects from API or context
+interface Attendance { percent: number; present: number; absent: number; late: number; total: number; monthly: { day: number; status: string; }[]; }
+const mockAttendance: Attendance = { percent: 0, present: 0, absent: 0, late: 0, total: 0, monthly: [] }; // TODO: Inject attendance from API or context
+interface Message { id: number; text: string; time: string; unread: boolean; }
+const mockMessages: Message[] = []; // TODO: Inject messages from API or context
+interface Alert { id: number; type: string; text: string; color: string; }
+const mockAlerts: Alert[] = []; // TODO: Inject alerts from API or context
 
 function StatusDot({ status }: { status: string }) {
   let color = COLORS.textSecondary;
@@ -89,7 +57,7 @@ export default function TeacherStudentPage() {
           <Text style={styles.studentName}>{mockStudent.name}</Text>
           <Text style={styles.studentClass}>Class {mockStudent.class}</Text>
         </View>
-        <StatusDot status={mockStudent.status} />
+        <StatusDot status={mockStudent.status || ''} />
       </View>
       {/* Alerts Dashboard */}
       <View style={styles.alertsRow}>

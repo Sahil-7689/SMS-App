@@ -26,6 +26,7 @@ import {
 import { useRouter } from 'expo-router';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 // [REMOVE] import { useTheme } from '../../../context/ThemeContext';
+// Removed Picker import - will use TouchableOpacity dropdown instead
 
 const { width } = Dimensions.get('window');
 
@@ -41,23 +42,16 @@ const darkTheme = {
   gray: '#7B7B7B',
 };
 
-const groupChats = [
-  { name: '10th A Class Group' },
-  { name: 'Teacher Group' },
-  { name: '9th B Class Group' },
-];
-
+interface GroupChat { name: string; }
+const groupChats: GroupChat[] = []; // TODO: Inject group chats from API or context
 const months = [
   'January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December'
 ];
 const weekDays = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
-const upcomingClasses = [
-  { date: '2024-06-20', subject: 'Mathematics', time: '09:00 - 10:00', class: '10th A' },
-  { date: '2024-06-21', subject: 'Physics', time: '10:15 - 11:15', class: '9th B' },
-  { date: '2024-06-22', subject: 'Chemistry', time: '11:30 - 12:30', class: '10th A' },
-];
+interface UpcomingClass { date: string; subject: string; time: string; class: string; }
+const upcomingClasses: UpcomingClass[] = []; // TODO: Inject upcoming classes from API or context
 
 export default function DashboardScreen() {
   // [REMOVE] const { theme, toggleTheme } = useTheme();
@@ -77,27 +71,26 @@ export default function DashboardScreen() {
   const router = useRouter();
 
   // Example teacher details with expanded information
-  const teacherDetails = {
-    name: 'Mr. Sahil Kumar',
-    email: 'sahil.kumar@school.edu',
-    phone: '+91 98765 43210',
-    role: 'Teacher',
-    department: 'Mathematics',
-    status: 'Active',
-    // Personal Details
-    fullName: 'Sahil Rajesh Kumar',
-    dateOfBirth: '8 July 1988',
-    gender: 'Male',
-    nationality: 'Indian',
-    address: 'Delhi, India',
-    // Account Details
-    displayName: 'Teacher_Sahil',
-    accountCreated: '15 August 2022',
-    lastLogin: '30 minutes ago',
-    membershipStatus: 'Premium',
-    accountVerification: 'Verified',
-    languagePreference: 'English',
-  };
+  interface TeacherDetails {
+    name?: string;
+    email?: string;
+    phone?: string;
+    role?: string;
+    department?: string;
+    status?: string;
+    fullName?: string;
+    dateOfBirth?: string;
+    gender?: string;
+    nationality?: string;
+    address?: string;
+    displayName?: string;
+    accountCreated?: string;
+    lastLogin?: string;
+    membershipStatus?: string;
+    accountVerification?: string;
+    languagePreference?: string;
+  }
+  const teacherDetails: TeacherDetails = {}; // TODO: Inject teacher details from API or context
 
   // Mock student data for attendance
   const students = [
@@ -134,6 +127,26 @@ export default function DashboardScreen() {
     console.log('Attendance submitted:', attendanceData);
     alert('Attendance submitted successfully!');
     setAttendanceModalVisible(false);
+  };
+
+  // Marks modal state
+  const [marksModalVisible, setMarksModalVisible] = useState(false);
+  const [selectedSubject, setSelectedSubject] = useState('');
+  const [marks, setMarks] = useState<{ [studentId: number]: string }>({});
+  const subjects = ['Math', 'Science', 'English', 'Social Studies']; // TODO: Inject from API or context
+
+  const handleOpenMarksModal = () => {
+    setMarksModalVisible(true);
+    setSelectedSubject(subjects[0] || '');
+    setMarks({});
+  };
+  const handleSetMark = (studentId: number, value: string) => {
+    setMarks(prev => ({ ...prev, [studentId]: value }));
+  };
+  const handleSubmitMarks = () => {
+    // TODO: Send marks to backend
+    setMarksModalVisible(false);
+    alert('Marks submitted!');
   };
 
   const getDaysInMonth = (month: number, year: number) => {
@@ -239,8 +252,8 @@ export default function DashboardScreen() {
             <Image source={require('../../../assets/images/icon.png')} style={{ width: 36, height: 36, borderRadius: 18 }} />
           </TouchableOpacity>
           <View style={{ flex: 1, marginLeft: 14 }}>
-            <Text style={styles.teacherName}>Mr. Sahil Kumar</Text>
-            <Text style={styles.teacherTitle}>Classteacher INA</Text>
+            <Text style={styles.teacherName}>{teacherDetails.name || 'Loading...'}</Text>
+            <Text style={styles.teacherTitle}>{teacherDetails.role || 'Loading...'}</Text>
           </View>
         </View>
         {/* Profile Modal */}
@@ -273,10 +286,10 @@ export default function DashboardScreen() {
                 </TouchableOpacity>
                 <View style={styles.profileHeaderInfo}>
                   <View style={styles.nameRow}>
-                    <Text style={styles.profileDisplayName}>{teacherDetails.name}</Text>
+                    <Text style={styles.profileDisplayName}>{teacherDetails.fullName || 'Loading...'}</Text>
                     <FontAwesome name="check-circle" size={16} color="#4ADE80" style={styles.verificationBadge} />
                   </View>
-                  <Text style={styles.profileEmail}>{teacherDetails.email}</Text>
+                  <Text style={styles.profileEmail}>{teacherDetails.email || 'Loading...'}</Text>
                 </View>
               </View>
 
@@ -306,30 +319,30 @@ export default function DashboardScreen() {
                     <View style={styles.infoGrid}>
                       <View style={styles.infoItem}>
                         <Text style={styles.infoLabel}>Full Name</Text>
-                        <Text style={styles.infoValue}>{teacherDetails.fullName}</Text>
+                        <Text style={styles.infoValue}>{teacherDetails.fullName || 'Loading...'}</Text>
                       </View>
                       <View style={styles.infoItem}>
                         <Text style={styles.infoLabel}>Date of Birth</Text>
-                        <Text style={styles.infoValue}>{teacherDetails.dateOfBirth}</Text>
+                        <Text style={styles.infoValue}>{teacherDetails.dateOfBirth || 'Loading...'}</Text>
                       </View>
                       <View style={styles.infoItem}>
                         <Text style={styles.infoLabel}>Gender</Text>
-                        <Text style={styles.infoValue}>{teacherDetails.gender}</Text>
+                        <Text style={styles.infoValue}>{teacherDetails.gender || 'Loading...'}</Text>
                       </View>
                       <View style={styles.infoItem}>
                         <Text style={styles.infoLabel}>Nationality</Text>
-                        <Text style={styles.infoValue}>{teacherDetails.nationality}</Text>
+                        <Text style={styles.infoValue}>{teacherDetails.nationality || 'Loading...'}</Text>
                       </View>
                       <View style={styles.infoItem}>
                         <Text style={styles.infoLabel}>Address</Text>
                         <View style={styles.addressRow}>
                           <FontAwesome name="map-marker" size={14} color="#B0B0B0" style={styles.addressIcon} />
-                          <Text style={styles.infoValue}>{teacherDetails.address}</Text>
+                          <Text style={styles.infoValue}>{teacherDetails.address || 'Loading...'}</Text>
                         </View>
                       </View>
                       <View style={styles.infoItem}>
                         <Text style={styles.infoLabel}>Phone Number</Text>
-                        <Text style={styles.infoValue}>{teacherDetails.phone}</Text>
+                        <Text style={styles.infoValue}>{teacherDetails.phone || 'Loading...'}</Text>
                       </View>
                     </View>
                   </View>
@@ -338,21 +351,21 @@ export default function DashboardScreen() {
                     <View style={styles.infoGrid}>
                       <View style={styles.infoItem}>
                         <Text style={styles.infoLabel}>Display Name</Text>
-                        <Text style={styles.infoValue}>{teacherDetails.displayName}</Text>
+                        <Text style={styles.infoValue}>{teacherDetails.displayName || 'Loading...'}</Text>
                       </View>
                       <View style={styles.infoItem}>
                         <Text style={styles.infoLabel}>Account Created</Text>
-                        <Text style={styles.infoValue}>{teacherDetails.accountCreated}</Text>
+                        <Text style={styles.infoValue}>{teacherDetails.accountCreated || 'Loading...'}</Text>
                       </View>
                       <View style={styles.infoItem}>
                         <Text style={styles.infoLabel}>Last Login</Text>
-                        <Text style={styles.infoValue}>{teacherDetails.lastLogin}</Text>
+                        <Text style={styles.infoValue}>{teacherDetails.lastLogin || 'Loading...'}</Text>
                       </View>
                       <View style={styles.infoItem}>
                         <Text style={styles.infoLabel}>Membership Status</Text>
                         <View style={styles.statusRow}>
                           <View style={[styles.statusBadge, { backgroundColor: '#A259FF' }]}>
-                            <Text style={styles.statusBadgeText}>{teacherDetails.membershipStatus}</Text>
+                            <Text style={styles.statusBadgeText}>{teacherDetails.membershipStatus || 'Loading...'}</Text>
                           </View>
                         </View>
                       </View>
@@ -360,12 +373,12 @@ export default function DashboardScreen() {
                         <Text style={styles.infoLabel}>Account Verification</Text>
                         <View style={styles.statusRow}>
                           <FontAwesome name="check-circle" size={16} color="#4ADE80" style={styles.verificationIcon} />
-                          <Text style={styles.infoValue}>{teacherDetails.accountVerification}</Text>
+                          <Text style={styles.infoValue}>{teacherDetails.accountVerification || 'Loading...'}</Text>
                         </View>
                       </View>
                       <View style={styles.infoItem}>
                         <Text style={styles.infoLabel}>Language Preference</Text>
-                        <Text style={styles.infoValue}>{teacherDetails.languagePreference}</Text>
+                        <Text style={styles.infoValue}>{teacherDetails.languagePreference || 'Loading...'}</Text>
                       </View>
                     </View>
                   </View>
@@ -478,6 +491,72 @@ export default function DashboardScreen() {
           </View>
         </Modal>
 
+        {/* Marks Modal */}
+        <Modal
+          visible={marksModalVisible}
+          animationType="slide"
+          transparent={true}
+          onRequestClose={() => setMarksModalVisible(false)}
+        >
+          <View style={styles.attendanceModalOverlay}>
+            <View style={styles.attendanceModalContent}>
+              <View style={styles.attendanceModalHeader}>
+                <Text style={styles.attendanceModalTitle}>Add Subject-wise Marks</Text>
+                <TouchableOpacity onPress={() => setMarksModalVisible(false)}>
+                  <FontAwesome name="times" size={20} color="#B0B0B0" />
+                </TouchableOpacity>
+              </View>
+              <View style={styles.classSelector}>
+                <Text style={styles.classSelectorLabel}>Select Subject:</Text>
+                <TouchableOpacity 
+                  style={styles.subjectSelectorBtn}
+                  onPress={() => {
+                    // Simple subject selection - you can enhance this with a modal
+                    const currentIndex = subjects.indexOf(selectedSubject);
+                    const nextIndex = (currentIndex + 1) % subjects.length;
+                    setSelectedSubject(subjects[nextIndex]);
+                  }}
+                >
+                  <Text style={styles.subjectSelectorText}>{selectedSubject || 'Select Subject'}</Text>
+                  <FontAwesome name="chevron-down" size={16} color="#B0B0B0" />
+                </TouchableOpacity>
+              </View>
+              <ScrollView style={styles.studentsList} showsVerticalScrollIndicator={false}>
+                {students.map(student => (
+                  <View key={student.id} style={styles.studentRow}>
+                    <View style={styles.studentInfo}>
+                      <Text style={styles.studentName}>{student.name}</Text>
+                      <Text style={styles.studentRollNo}>Roll No: {student.rollNo}</Text>
+                    </View>
+                    <TextInput
+                      style={styles.marksInput}
+                      placeholder="Marks"
+                      placeholderTextColor="#A0A0A0"
+                      keyboardType="numeric"
+                      value={marks[student.id] || ''}
+                      onChangeText={value => handleSetMark(student.id, value)}
+                    />
+                  </View>
+                ))}
+              </ScrollView>
+              <View style={styles.attendanceModalFooter}>
+                <TouchableOpacity
+                  style={styles.cancelBtn}
+                  onPress={() => setMarksModalVisible(false)}
+                >
+                  <Text style={styles.cancelBtnText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.submitBtn}
+                  onPress={handleSubmitMarks}
+                >
+                  <Text style={styles.submitBtnText}>Submit Marks</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+
         {/* Search Bar */}
         <View style={styles.searchBar}>
           <Search size={18} color={darkTheme.text} />
@@ -490,16 +569,26 @@ export default function DashboardScreen() {
         {/* Group Communication */}
         <Text style={styles.sectionHeading}>Group Chat</Text>
         <View style={styles.groupChatSection}>
-          {groupChats.map((group, idx) => (
-            <View key={idx} style={styles.groupChatCard}>
-              <Users size={22} color={darkTheme.accent} />
-              <Text style={styles.groupChatName}>{group.name}</Text>
+          {groupChats.length === 0 ? (
+            <View style={styles.groupChatCard}>
+              <Text style={styles.groupChatName}>No group chats available.</Text>
             </View>
-          ))}
+          ) : (
+            groupChats.map((group, idx) => (
+              <View key={idx} style={styles.groupChatCard}>
+                <Users size={22} color={darkTheme.accent} />
+                <Text style={styles.groupChatName}>{group.name}</Text>
+              </View>
+            ))
+          )}
           <View style={styles.groupActionsRow}>
             <TouchableOpacity style={styles.groupActionBtn} onPress={handleTakeAttendance}>
               <UserCheck size={16} color="#fff" />
               <Text style={styles.groupActionText}>Take Attendance</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.groupActionBtn} onPress={handleOpenMarksModal}>
+              <FontAwesome name="pencil" size={16} color="#fff" />
+              <Text style={styles.groupActionText}>Marks</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.groupActionBtn}>
               <Mail size={16} color="#fff" />
@@ -541,16 +630,22 @@ export default function DashboardScreen() {
         {/* Schedule Section */}
         <Text style={styles.sectionHeading}>Upcoming Classes</Text>
         <View style={styles.scheduleCard}>
-          {upcomingClasses.map((cls, idx) => (
-            <View key={idx} style={styles.classItem}>
-              <CalendarIcon size={18} color={darkTheme.accent} style={{ marginRight: 8 }} />
-              <View style={{ flex: 1 }}>
-                <Text style={styles.classSubject}>{cls.subject}</Text>
-                <Text style={styles.classInfo}>{cls.class} | {cls.time}</Text>
-                <Text style={styles.classDate}>{cls.date}</Text>
-              </View>
+          {upcomingClasses.length === 0 ? (
+            <View style={styles.classItem}>
+              <Text style={styles.classSubject}>No upcoming classes.</Text>
             </View>
-          ))}
+          ) : (
+            upcomingClasses.map((cls, idx) => (
+              <View key={idx} style={styles.classItem}>
+                <CalendarIcon size={18} color={darkTheme.accent} style={{ marginRight: 8 }} />
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.classSubject}>{cls.subject}</Text>
+                  <Text style={styles.classInfo}>{cls.class} | {cls.time}</Text>
+                  <Text style={styles.classDate}>{cls.date}</Text>
+                </View>
+              </View>
+            ))
+          )}
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -1170,5 +1265,32 @@ const styles = StyleSheet.create({
     color: darkTheme.textSecondary,
     fontWeight: 'bold',
     fontSize: 16,
+  },
+  marksInput: {
+    backgroundColor: '#232136',
+    color: '#fff',
+    borderRadius: 8,
+    fontSize: 15,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    width: 70,
+    textAlign: 'center',
+    borderWidth: 1,
+    borderColor: '#353945',
+  },
+  subjectSelectorBtn: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: '#232136',
+    padding: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#353945',
+  },
+  subjectSelectorText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '500',
   },
 }); 

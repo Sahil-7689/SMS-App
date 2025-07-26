@@ -26,11 +26,7 @@ type Assignment = {
   subject: string;
   attachment?: ImagePickerAsset;
 };
-
-const ASSIGNMENTS: Assignment[] = [
-  { id: 1, title: 'Algebra Worksheet', due: '2024-07-10', class: '10', subject: 'Math' },
-  { id: 2, title: 'Photosynthesis Project', due: '2024-07-12', class: '10', subject: 'Science' },
-];
+const ASSIGNMENTS: Assignment[] = []; // TODO: Inject assignments from API or context
 export default function AssignmentTab() {
   const [selectedClass, setSelectedClass] = useState('10');
   const [selectedSubject, setSelectedSubject] = useState('SS');

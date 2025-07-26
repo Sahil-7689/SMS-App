@@ -2,12 +2,8 @@ import React from 'react';
 import { View, Text, StyleSheet, ScrollView } from 'react-native';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 
-const SUBJECT_SCORES = [
-  { subject: 'Math', score: 92, max: 100, color: '#A259FF' },
-  { subject: 'Science', score: 85, max: 100, color: '#4ADE80' },
-  { subject: 'English', score: 78, max: 100, color: '#60A5FA' },
-  { subject: 'Social Studies', score: 88, max: 100, color: '#F472B6' },
-];
+interface SubjectScore { subject: string; score: number; max: number; color: string; }
+const SUBJECT_SCORES: SubjectScore[] = []; // TODO: Inject subject scores from API or context
 
 export default function ScoreScreen() {
   const overall = Math.round(
@@ -29,7 +25,7 @@ export default function ScoreScreen() {
       </View>
       {/* Subject Scores */}
       <Text style={styles.sectionTitle}>Subject Scores</Text>
-      {SUBJECT_SCORES.map((s, idx) => (
+      {SUBJECT_SCORES.length === 0 ? <Text style={{color:'#fff', textAlign:'center'}}>No subject scores available.</Text> : SUBJECT_SCORES.map((s, idx) => (
         <View key={s.subject} style={styles.subjectCard}>
           <View style={[styles.subjectColor, { backgroundColor: s.color }]} />
           <View style={{ flex: 1 }}>

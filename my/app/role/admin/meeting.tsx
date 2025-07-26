@@ -3,15 +3,10 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image } from 'rea
 import { Ionicons } from '@expo/vector-icons';
 
 const MEETING_COLORS = ['#6EE7B7', '#A7F3D0', '#5EEAD4']; // soft green, mint, teal
-const MEETING_TYPES = [
-  { title: 'PTM Class 5', date: '03-Jul-25', time: '10:00 AM', status: 'Scheduled', type: 'Offline', details: 'Room 201', color: MEETING_COLORS[0], illustration: require('../../../assets/images/partial-react-logo.png') },
-  { title: 'Staff Review', date: '05-Jul-25', time: '2:00 PM', status: 'Pending', type: 'Online', details: 'Google Meet', color: MEETING_COLORS[1], illustration: require('../../../assets/images/partial-react-logo.png') },
-  { title: 'Exam Planning', date: '10-Jul-25', time: '11:00 AM', status: 'Scheduled', type: 'Online', details: 'Google Meet', color: MEETING_COLORS[2], illustration: require('../../../assets/images/react-logo.png') },
-];
-const MEETING_HISTORY = [
-  { title: 'Annual Review', date: '01-Jun-25', organizer: 'Principal', type: 'Offline', color: MEETING_COLORS[0] },
-  { title: 'Parent Feedback', date: '15-May-25', organizer: 'Admin', type: 'Online', color: MEETING_COLORS[1] },
-];
+interface MeetingType { title: string; date: string; time: string; status: string; type: string; details: string; color: string; illustration: any; }
+interface MeetingHistoryType { title: string; date: string; organizer: string; type: string; color: string; }
+const MEETING_TYPES: MeetingType[] = []; // TODO: Inject meeting types from API or context
+const MEETING_HISTORY: MeetingHistoryType[] = []; // TODO: Inject meeting history from API or context
 
 function MeetingHeader() {
   return (
@@ -37,7 +32,7 @@ function MeetingTabIndicator() {
   );
 }
 
-function MeetingCard({ meeting }: { meeting: typeof MEETING_TYPES[0] }) {
+function MeetingCard({ meeting }: { meeting: MeetingType }) {
   return (
     <View style={[styles.meetingCard, { backgroundColor: meeting.color }]}> 
       <View style={{ flex: 1 }}>
@@ -51,7 +46,7 @@ function MeetingCard({ meeting }: { meeting: typeof MEETING_TYPES[0] }) {
   );
 }
 
-function MeetingHistoryCard({ meeting }: { meeting: typeof MEETING_HISTORY[0] }) {
+function MeetingHistoryCard({ meeting }: { meeting: MeetingHistoryType }) {
   return (
     <View style={[styles.historyCard, { backgroundColor: meeting.color }]}> 
       <View style={{ flex: 1 }}>
@@ -70,11 +65,11 @@ export default function MeetingScreen() {
       <MeetingTabIndicator />
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 32 }}>
         <Text style={styles.sectionTitle}>Upcoming Meetings</Text>
-        {MEETING_TYPES.map((meeting, idx) => (
+        {MEETING_TYPES.length === 0 ? <Text style={{color:'#fff', textAlign:'center'}}>No upcoming meetings.</Text> : MEETING_TYPES.map((meeting, idx) => (
           <MeetingCard meeting={meeting} key={idx} />
         ))}
         <Text style={styles.sectionTitle}>Meeting History</Text>
-        {MEETING_HISTORY.map((meeting, idx) => (
+        {MEETING_HISTORY.length === 0 ? <Text style={{color:'#fff', textAlign:'center'}}>No meeting history.</Text> : MEETING_HISTORY.map((meeting, idx) => (
           <MeetingHistoryCard meeting={meeting} key={idx} />
         ))}
       </ScrollView>

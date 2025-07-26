@@ -9,41 +9,18 @@ const SUCCESS = '#4CAF50';
 const ERROR = '#F44336';
 const PENDING = '#FFA000';
 
-const studentInfo = {
-  name: 'Shinchan',
-  id: 'STU123456',
-  class: 'Class A',
-  balance: 12500,
-};
-
-const outstandingFees = [
-  { id: '1', type: 'Tuition', due: '2024-07-01', amount: 10000, urgent: true },
-  { id: '2', type: 'Library', due: '2024-07-10', amount: 1500, urgent: false },
-  { id: '3', type: 'Lab', due: '2024-07-15', amount: 2000, urgent: false },
-];
-
-type PaymentMethod = {
-  id: string;
-  icon: 'credit-card' | 'university' | 'mobile';
-  name: string;
-  lastUsed: boolean;
-};
-
-const paymentMethods: PaymentMethod[] = [
-  { id: '1', icon: 'credit-card', name: 'Credit Card', lastUsed: true },
-  { id: '2', icon: 'university', name: 'Bank Transfer', lastUsed: false },
-  { id: '3', icon: 'mobile', name: 'Digital Wallet', lastUsed: false },
-];
-
-const paymentHistory = [
-  { id: '1', date: '2024-06-01', amount: 5000, method: 'Credit Card', status: 'Success' },
-  { id: '2', date: '2024-05-15', amount: 3000, method: 'Bank Transfer', status: 'Success' },
-  { id: '3', date: '2024-05-01', amount: 2000, method: 'Digital Wallet', status: 'Pending' },
-  { id: '4', date: '2024-04-10', amount: 1000, method: 'Credit Card', status: 'Failed' },
-];
+// Add explicit types for placeholders
+interface StudentInfo { name: string; id: string; class: string; balance: number; }
+interface OutstandingFee { id: string; type: string; due: string; amount: number; urgent: boolean; }
+type PaymentMethod = { id: string; icon: string; name: string; lastUsed: boolean; };
+interface PaymentHistory { id: string; date: string; amount: number; method: string; status: string; }
+const studentInfo: Partial<StudentInfo> = {}; // TODO: Inject student info from API or context
+const outstandingFees: OutstandingFee[] = []; // TODO: Inject from API or context
+const paymentMethods: PaymentMethod[] = []; // TODO: Inject from API or context
+const paymentHistory: PaymentHistory[] = []; // TODO: Inject from API or context
 
 export default function FeesScreen() {
-  const [selectedMethod, setSelectedMethod] = useState(paymentMethods[0].id);
+  const [selectedMethod, setSelectedMethod] = useState(paymentMethods[0]?.id || '');
   const [paying, setPaying] = useState(false);
   const [filter, setFilter] = useState('All');
   const [search, setSearch] = useState('');
@@ -78,51 +55,123 @@ export default function FeesScreen() {
         <View style={styles.headerSection}>
           <Text style={styles.headerTitle}>Fees Payment</Text>
           <View style={styles.studentInfoRow}>
-            <Text style={styles.studentName}>{studentInfo.name}</Text>
-            <Text style={styles.studentId}>{studentInfo.id}</Text>
-            <Text style={styles.studentClass}>{studentInfo.class}</Text>
+            <Text style={styles.studentName}>{studentInfo.name || 'N/A'}</Text>
+            <Text style={styles.studentId}>{studentInfo.id || 'N/A'}</Text>
+            <Text style={styles.studentClass}>{studentInfo.class || 'N/A'}</Text>
           </View>
           <View style={styles.balanceCard}>
             <Text style={styles.balanceLabel}>Current Balance</Text>
-            <Text style={styles.balanceValue}>₹{studentInfo.balance.toLocaleString()}</Text>
+            <Text style={styles.balanceValue}>₹{studentInfo.balance?.toLocaleString() || '0'}</Text>
           </View>
         </View>
 
         {/* Outstanding Fees */}
         <Text style={styles.sectionTitle}>Outstanding Fees</Text>
-        {outstandingFees.map(fee => (
-          <View key={fee.id} style={styles.feeCard}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.feeType}>{fee.type}</Text>
-              <Text style={[styles.feeDue, fee.urgent && { color: ERROR }]}>Due: {fee.due}</Text>
+        {outstandingFees.length === 0 ? (
+          <Text style={{ color: '#fff', textAlign: 'center', padding: 20 }}>No outstanding fees.</Text>
+        ) : (
+          outstandingFees.map(fee => (
+            <View key={fee.id} style={styles.feeCard}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.feeType}>{fee.type}</Text>
+                <Text style={[styles.feeDue, fee.urgent && { color: ERROR }]}>Due: {fee.due}</Text>
+              </View>
+              <Text style={styles.feeAmount}>₹{fee.amount.toLocaleString()}</Text>
+              <TouchableOpacity style={styles.quickPayBtn}>
+                <Text style={styles.quickPayText}>Pay Now</Text>
+              </TouchableOpacity>
             </View>
-            <Text style={styles.feeAmount}>₹{fee.amount.toLocaleString()}</Text>
-            <TouchableOpacity style={styles.quickPayBtn}>
-              <Text style={styles.quickPayText}>Pay Now</Text>
-            </TouchableOpacity>
-          </View>
-        ))}
+          ))
+        )}
 
         {/* Payment Methods */}
         <Text style={styles.sectionTitle}>Payment Methods</Text>
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.paymentMethodsRow}>
-          {paymentMethods.map(method => (
-            <TouchableOpacity
-              key={method.id}
-              style={[styles.methodCard, selectedMethod === method.id && styles.methodCardSelected]}
-              onPress={() => setSelectedMethod(method.id)}
-              activeOpacity={0.8}
-            >
-              <FontAwesome name={method.icon} size={28} color={selectedMethod === method.id ? ACCENT : '#fff'} />
-              <Text style={styles.methodName}>{method.name}</Text>
-              {method.lastUsed && <Text style={styles.lastUsed}>Last used</Text>}
+        {paymentMethods.length === 0 ? (
+          <Text style={{ color: '#fff', textAlign: 'center', padding: 20 }}>No payment methods.</Text>
+        ) : (
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.paymentMethodsRow}>
+            {paymentMethods.map(method => (
+              <TouchableOpacity
+                key={method.id}
+                style={[styles.methodCard, selectedMethod === method.id && styles.methodCardSelected]}
+                onPress={() => setSelectedMethod(method.id)}
+                activeOpacity={0.8}
+              >
+                <FontAwesome name={method.icon as any} size={28} color={selectedMethod === method.id ? ACCENT : '#fff'} />
+                <Text style={styles.methodName}>{method.name}</Text>
+                {method.lastUsed && <Text style={styles.lastUsed}>Last used</Text>}
+              </TouchableOpacity>
+            ))}
+            <TouchableOpacity style={styles.addMethodCard}>
+              <FontAwesome name="plus" size={28} color={ACCENT} />
+              <Text style={styles.methodName}>Add</Text>
             </TouchableOpacity>
-          ))}
-          <TouchableOpacity style={styles.addMethodCard}>
-            <FontAwesome name="plus" size={28} color={ACCENT} />
-            <Text style={styles.methodName}>Add</Text>
-          </TouchableOpacity>
-        </ScrollView>
+          </ScrollView>
+        )}
+
+        {/* Payment History */}
+        <Text style={styles.sectionTitle}>Payment History</Text>
+        {paymentHistory.length === 0 ? (
+          <Text style={{ color: '#fff', textAlign: 'center', padding: 20 }}>No payment history.</Text>
+        ) : (
+          <FlatList
+            data={filteredHistory}
+            keyExtractor={(item) => item.id}
+            renderItem={({ item }) => (
+              <View style={styles.historyRow}>
+                <Text style={styles.historyDate}>{item.date}</Text>
+                <Text style={styles.historyMethod}>{item.method}</Text>
+                <Text style={styles.historyAmount}>₹{item.amount.toLocaleString()}</Text>
+                <View style={[styles.statusBadge, { backgroundColor: item.status === 'Success' ? SUCCESS : (item.status === 'Failed' ? ERROR : PENDING) }]}>
+                  <Text style={styles.statusText}>{item.status}</Text>
+                </View>
+              </View>
+            )}
+            ListHeaderComponent={() => (
+              <View style={styles.historyHeaderRow}>
+                <View style={styles.filterRow}>
+                  <TouchableOpacity
+                    style={[styles.filterBtn, filter === 'All' && styles.filterBtnActive]}
+                    onPress={() => setFilter('All')}
+                  >
+                    <Text style={[styles.filterText, filter === 'All' && styles.filterTextActive]}>All</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.filterBtn, filter === 'Success' && styles.filterBtnActive]}
+                    onPress={() => setFilter('Success')}
+                  >
+                    <Text style={[styles.filterText, filter === 'Success' && styles.filterTextActive]}>Success</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.filterBtn, filter === 'Pending' && styles.filterBtnActive]}
+                    onPress={() => setFilter('Pending')}
+                  >
+                    <Text style={[styles.filterText, filter === 'Pending' && styles.filterTextActive]}>Pending</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[styles.filterBtn, filter === 'Failed' && styles.filterBtnActive]}
+                    onPress={() => setFilter('Failed')}
+                  >
+                    <Text style={[styles.filterText, filter === 'Failed' && styles.filterTextActive]}>Failed</Text>
+                  </TouchableOpacity>
+                </View>
+                <TextInput
+                  style={styles.searchInput}
+                  placeholder="Search history"
+                  placeholderTextColor="#A0A0A0"
+                  value={search}
+                  onChangeText={setSearch}
+                />
+              </View>
+            )}
+            ListFooterComponent={() => (
+              <View style={styles.historyRow}>
+                <Text style={styles.historyDate}>Total Due</Text>
+                <Text style={styles.historyMethod}>₹{totalDue.toLocaleString()}</Text>
+              </View>
+            )}
+          />
+        )}
       </ScrollView>
       {/* Bottom Action Area */}
       <View style={styles.stickyBottom}>

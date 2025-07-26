@@ -1,17 +1,14 @@
 import React from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 
-const subjects = [
-  { code: 'SUB101', name: 'Mathematics', teacher: 'Dr. Eleanor Vance', type: 'Core', maxMarks: 100 },
-  { code: 'SUB102', name: 'Physics', teacher: 'Dr. Theodore Hayes', type: 'Core', maxMarks: 100 },
-  { code: 'SUB103', name: 'Chemistry', teacher: 'Dr. Olivia Bennett', type: 'Core', maxMarks: 100 },
-];
+interface Subject { code: string; name: string; teacher: string; type: string; maxMarks: number; }
+const subjects: Subject[] = []; // TODO: Inject subjects from API or context
 
 export default function SubjectTabScreen({ search }: { search: string }) {
   return (
     <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 32 }}>
       <Text style={styles.heading}>Subjects</Text>
-      {subjects.map((s, i) => (
+      {subjects.length === 0 ? <Text style={{color:'#fff', textAlign:'center'}}>No subjects available.</Text> : subjects.map((s, i) => (
         <View key={s.code} style={styles.card}>
           <View style={styles.row}><Text style={styles.label}>Code:</Text><Text style={styles.value}>{s.code}</Text></View>
           <View style={styles.row}><Text style={styles.label}>Name:</Text><Text style={styles.value}>{s.name}</Text></View>

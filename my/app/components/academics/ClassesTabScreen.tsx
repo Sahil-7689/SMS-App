@@ -1,17 +1,14 @@
 import React from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 
-const classes = [
-  { name: '10A', teacher: 'Ms. Priya Sharma', students: 40, room: '201' },
-  { name: '10B', teacher: 'Mr. Rajesh Kumar', students: 38, room: '202' },
-  { name: '9A', teacher: 'Ms. Anjali Mehra', students: 42, room: '203' },
-];
+interface Class { name: string; teacher: string; students: number; room: string; }
+const classes: Class[] = []; // TODO: Inject classes from API or context
 
 export default function ClassesTabScreen({ search }: { search: string }) {
   return (
     <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 32 }}>
       <Text style={styles.heading}>Classes</Text>
-      {classes.map((c, i) => (
+      {classes.length === 0 ? <Text style={{color:'#fff', textAlign:'center'}}>No classes available.</Text> : classes.map((c, i) => (
         <View key={c.name} style={styles.card}>
           <View style={styles.row}><Text style={styles.label}>Class:</Text><Text style={styles.value}>{c.name}</Text></View>
           <View style={styles.row}><Text style={styles.label}>Teacher:</Text><Text style={styles.value}>{c.teacher}</Text></View>
