@@ -1,9 +1,30 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Image, Modal } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Image, Modal, Alert, ActivityIndicator } from 'react-native';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as DocumentPicker from 'expo-document-picker';
+import { submitStudentLeaveRequest, getStudentLeaveRequests } from '../../../config/firebase';
 
 interface QuickStat { label: string; value: number; }
 interface Subject { name: string; total: number; attended: number; }
+interface LeaveRequest {
+  id: string;
+  studentId: string;
+  studentName: string;
+  studentClass: string;
+  startDate: string;
+  endDate: string;
+  leaveType: string;
+  reason: string;
+  status: string;
+  submittedAt: Date;
+  reviewedBy?: string;
+  reviewedAt?: Date;
+  adminComment?: string;
+  attachmentFileName?: string;
+  attachmentType?: string;
+}
+
 const OVERALL_ATTENDANCE: number = 0; // TODO: Inject from API or context
 const PRESENT: number = 0; // TODO: Inject from API or context
 const ABSENT: number = 0; // TODO: Inject from API or context
@@ -12,13 +33,97 @@ const SUBJECTS: Subject[] = []; // TODO: Inject from API or context
 
 export default function AttendanceScreen() {
   const [leaveNoteModalVisible, setLeaveNoteModalVisible] = useState(false);
+  const [leaveRequests, setLeaveRequests] = useState<LeaveRequest[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [studentId, setStudentId] = useState<string>('');
+  const [studentName, setStudentName] = useState<string>('');
+  const [studentClass, setStudentClass] = useState<string>('');
   const [leaveNoteData, setLeaveNoteData] = useState({
     reason: '',
     startDate: '',
     endDate: '',
     description: '',
-    type: 'sick' // 'sick', 'personal', 'emergency'
+    type: 'sick', // 'sick', 'personal', 'emergency'
+    parentContact: '',
+    attachment: null as any
   });
+
+  useEffect(() => {
+    fetchStudentInfo();
+  }, []);
+
+  useEffect(() => {
+    if (studentId) {
+      fetchLeaveRequests();
+    }
+  }, [studentId]);
+
+  const fetchStudentInfo = async () => {
+    try {
+      const userData = await AsyncStorage.getItem('userData');
+      if (userData) {
+        const parsed = JSON.parse(userData);
+        setStudentId(parsed.uid || '');
+        setStudentName(parsed.name || parsed.fullName || '');
+        setStudentClass(parsed.class || '10-B');
+      }
+    } catch (error) {
+      console.error('Error fetching student info:', error);
+    }
+  };
+
+  const fetchLeaveRequests = async () => {
+    try {
+      setLoading(true);
+      const result = await getStudentLeaveRequests({
+        studentId: studentId
+      });
+      
+      if (result.success && result.leaveRequests) {
+        const mappedLeaves: LeaveRequest[] = result.leaveRequests.map((doc: any) => ({
+          id: doc.id,
+          studentId: doc.studentId || '',
+          studentName: doc.studentName || '',
+          studentClass: doc.studentClass || '',
+          startDate: doc.startDate || '',
+          endDate: doc.endDate || '',
+          leaveType: doc.leaveType || '',
+          reason: doc.reason || '',
+          status: doc.status || 'pending',
+          submittedAt: doc.submittedAt?.toDate() || new Date(),
+          reviewedBy: doc.reviewedBy || '',
+          reviewedAt: doc.reviewedAt?.toDate() || undefined,
+          adminComment: doc.adminComment || '',
+          attachmentFileName: doc.attachmentFileName || '',
+          attachmentType: doc.attachmentType || '',
+        }));
+        setLeaveRequests(mappedLeaves);
+      }
+    } catch (error) {
+      console.error('Error fetching leave requests:', error);
+      Alert.alert('Error', 'Failed to fetch leave requests');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const pickAttachment = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', '*/*'],
+        copyToCacheDirectory: true,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const asset = result.assets[0];
+        setLeaveNoteData({ ...leaveNoteData, attachment: asset });
+      }
+    } catch (error) {
+      console.error('Document picker error:', error);
+      Alert.alert('Error', 'Failed to pick document');
+    }
+  };
 
   const handleLeaveNote = () => {
     setLeaveNoteModalVisible(true);
@@ -28,7 +133,9 @@ export default function AttendanceScreen() {
       startDate: '',
       endDate: '',
       description: '',
-      type: 'sick'
+      type: 'sick',
+      parentContact: '',
+      attachment: null
     });
   };
 
@@ -39,17 +146,57 @@ export default function AttendanceScreen() {
     }));
   };
 
-  const handleSubmitLeaveNote = () => {
+  const handleSubmitLeaveNote = async () => {
     // Validate required fields
     if (!leaveNoteData.reason || !leaveNoteData.startDate || !leaveNoteData.endDate) {
-      alert('Please fill in all required fields');
+      Alert.alert('Error', 'Please fill in all required fields');
       return;
     }
-    
-    // Here you would typically send the leave note data to your backend
-    console.log('Leave note submitted:', leaveNoteData);
-    alert('Leave note submitted successfully!');
-    setLeaveNoteModalVisible(false);
+
+    try {
+      setSubmitting(true);
+      
+      const leaveData = {
+        studentId: studentId,
+        studentName: studentName,
+        studentClass: studentClass,
+        startDate: leaveNoteData.startDate.trim(),
+        endDate: leaveNoteData.endDate.trim(),
+        leaveType: leaveNoteData.type,
+        reason: leaveNoteData.reason.trim(),
+        parentContact: leaveNoteData.parentContact.trim() || undefined,
+        attachmentFileName: leaveNoteData.attachment?.name || undefined,
+        attachmentType: leaveNoteData.attachment?.mimeType || undefined,
+      };
+
+      const result = await submitStudentLeaveRequest(leaveData);
+      
+      if (result.success) {
+        Alert.alert('Success', 'Leave request submitted successfully');
+        setLeaveNoteModalVisible(false);
+        fetchLeaveRequests(); // Refresh the list
+      } else {
+        Alert.alert('Error', result.error || 'Failed to submit leave request');
+      }
+    } catch (error) {
+      console.error('Error submitting leave request:', error);
+      Alert.alert('Error', 'Failed to submit leave request');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', { 
+      year: 'numeric', 
+      month: 'short', 
+      day: 'numeric' 
+    });
+  };
+
+  const getStatusText = (status: string) => {
+    return status.charAt(0).toUpperCase() + status.slice(1);
   };
 
   return (
@@ -113,6 +260,44 @@ export default function AttendanceScreen() {
       <TouchableOpacity style={styles.leaveBtn} onPress={handleLeaveNote}>
         <Text style={styles.leaveBtnText}>Add Leave Note</Text>
       </TouchableOpacity>
+
+      {/* Leave Requests Section */}
+      <Text style={styles.sectionTitle}>My Leave Requests</Text>
+      {loading ? (
+        <ActivityIndicator color="#A259FF" size="large" style={{ marginTop: 20 }} />
+      ) : leaveRequests.length === 0 ? (
+        <Text style={styles.emptyText}>No leave requests found.</Text>
+      ) : (
+        <View style={styles.leaveRequestsList}>
+          {leaveRequests.map((request) => (
+            <View key={request.id} style={styles.leaveRequestCard}>
+              <View style={styles.leaveRequestHeader}>
+                <Text style={styles.leaveRequestType}>{request.leaveType}</Text>
+                <View style={[
+                  styles.statusBadge, 
+                  { backgroundColor: request.status === 'approved' ? '#4ADE80' : request.status === 'rejected' ? '#F472B6' : '#FFD600' }
+                ]}>
+                  <Text style={styles.statusText}>{getStatusText(request.status)}</Text>
+                </View>
+              </View>
+              <Text style={styles.leaveRequestDates}>
+                {formatDate(request.startDate)} - {formatDate(request.endDate)}
+              </Text>
+              <Text style={styles.leaveRequestReason}>{request.reason}</Text>
+              {request.adminComment && (
+                <Text style={styles.adminComment}>Admin: {request.adminComment}</Text>
+              )}
+              {request.attachmentFileName && (
+                <View style={styles.attachmentRow}>
+                  <FontAwesome name="file" size={14} color="#A259FF" />
+                  <Text style={styles.attachmentText}>{request.attachmentFileName}</Text>
+                </View>
+              )}
+            </View>
+          ))}
+        </View>
+      )}
+
       {/* Subject-wise Breakdown */}
       <Text style={styles.sectionTitle}>Subject-wise Attendance</Text>
       <View style={styles.subjectList}>
@@ -238,6 +423,30 @@ export default function AttendanceScreen() {
                   numberOfLines={4}
                 />
               </View>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.formLabel}>Parent Contact (Optional)</Text>
+                <TextInput
+                  style={styles.formInput}
+                  placeholder="Parent's phone number or email"
+                  placeholderTextColor="#B0B0B0"
+                  value={leaveNoteData.parentContact}
+                  onChangeText={(text) => handleLeaveNoteChange('parentContact', text)}
+                />
+              </View>
+
+              <View style={styles.formGroup}>
+                <Text style={styles.formLabel}>Attachment (Optional)</Text>
+                <TouchableOpacity style={styles.attachmentBtn} onPress={pickAttachment}>
+                  <FontAwesome name="cloud-upload" size={16} color="#A259FF" />
+                  <Text style={styles.attachmentBtnText}>
+                    {leaveNoteData.attachment ? leaveNoteData.attachment.name : 'Upload Document'}
+                  </Text>
+                </TouchableOpacity>
+                {leaveNoteData.attachment && (
+                  <Text style={styles.attachmentFileName}>{leaveNoteData.attachment.name}</Text>
+                )}
+              </View>
             </ScrollView>
 
             <View style={styles.leaveNoteModalFooter}>
@@ -250,8 +459,13 @@ export default function AttendanceScreen() {
               <TouchableOpacity
                 style={styles.submitBtn}
                 onPress={handleSubmitLeaveNote}
+                disabled={submitting}
               >
-                <Text style={styles.submitBtnText}>Submit Leave Note</Text>
+                {submitting ? (
+                  <ActivityIndicator color="#FFFFFF" size="small" />
+                ) : (
+                  <Text style={styles.submitBtnText}>Submit Leave Note</Text>
+                )}
               </TouchableOpacity>
             </View>
           </View>
@@ -590,5 +804,94 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '600',
+  },
+  // Leave Request Styles
+  emptyText: {
+    color: '#B0B0B0',
+    textAlign: 'center',
+    marginTop: 20,
+    fontSize: 16,
+  },
+  leaveRequestsList: {
+    marginBottom: 20,
+  },
+  leaveRequestCard: {
+    backgroundColor: '#23262F',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#333333',
+  },
+  leaveRequestHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  leaveRequestType: {
+    color: '#A259FF',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  statusBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  statusText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  leaveRequestDates: {
+    color: '#B0B0B0',
+    fontSize: 14,
+    marginBottom: 6,
+  },
+  leaveRequestReason: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    marginBottom: 6,
+    lineHeight: 20,
+  },
+  adminComment: {
+    color: '#FFD600',
+    fontSize: 12,
+    fontStyle: 'italic',
+    marginBottom: 4,
+    lineHeight: 16,
+  },
+  attachmentRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  attachmentText: {
+    color: '#A259FF',
+    fontSize: 12,
+    marginLeft: 6,
+    flex: 1,
+  },
+  attachmentBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#23262F',
+    borderRadius: 8,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#333333',
+    borderStyle: 'dashed',
+  },
+  attachmentBtnText: {
+    color: '#A259FF',
+    fontSize: 14,
+    marginLeft: 8,
+  },
+  attachmentFileName: {
+    color: '#B0B0B0',
+    fontSize: 12,
+    marginTop: 4,
+    fontStyle: 'italic',
   },
 }); 

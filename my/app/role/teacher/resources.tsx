@@ -1,8 +1,11 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image, ScrollView, TextInput, Modal, Platform, KeyboardAvoidingView } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Image, ScrollView, TextInput, Modal, Platform, KeyboardAvoidingView, Alert } from 'react-native';
 import { Ionicons, Feather, MaterialCommunityIcons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import * as DocumentPicker from 'expo-document-picker';
 import type { ImagePickerAsset } from 'expo-image-picker';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { addResource, getResources } from '../../../config/firebase';
 
 const ACCENT = '#A259FF';
 const BG_DARK = '#181A20';
@@ -12,33 +15,122 @@ const WHITE = '#fff';
 const TEAL = '#2DD4BF';
 
 type Resource = {
-  id: number;
+  id: string;
   subject: string;
   class: string;
-  file: string;
+  title: string;
   type: string;
   attachment?: ImagePickerAsset;
+  attachmentFileName?: string;
+  attachmentType?: string;
+  createdAt?: Date;
+  teacherId?: string;
+  teacherName?: string;
 };
-const RESOURCES: Resource[] = []; // TODO: Inject resources from API or context
-const CLASSES: string[] = []; // TODO: Inject classes from API or context
-const SUBJECTS: string[] = []; // TODO: Inject subjects from API or context
+
+const CLASSES: string[] = ['9', '10', '11', '12'];
+const SUBJECTS: string[] = ['Math', 'Science', 'English', 'History', 'Geography', 'Computer Science'];
 
 export default function ResourcesPage() {
   const [selectedClass, setSelectedClass] = useState('10');
   const [selectedSubject, setSelectedSubject] = useState('Math');
   const [search, setSearch] = useState('');
-  const [resources, setResources] = useState<Resource[]>(RESOURCES);
+  const [resources, setResources] = useState<Resource[]>([]);
   const [uploadModalVisible, setUploadModalVisible] = useState(false);
   const [newFileName, setNewFileName] = useState('');
   const [newClass, setNewClass] = useState(selectedClass);
   const [newSubject, setNewSubject] = useState(selectedSubject);
   const [attachment, setAttachment] = useState<ImagePickerAsset | undefined>(undefined);
+  const [loading, setLoading] = useState(false);
+  const [teacherId, setTeacherId] = useState<string>('');
+  const [teacherName, setTeacherName] = useState<string>('');
 
   const filteredResources = resources.filter(
-    r => (selectedClass === r.class) && (selectedSubject === r.subject) && (r.file.toLowerCase().includes(search.toLowerCase()))
+    r => (selectedClass === r.class) && (selectedSubject === r.subject) && (r.title.toLowerCase().includes(search.toLowerCase()))
   );
 
+  useEffect(() => {
+    fetchTeacherInfo();
+  }, []);
+
+  useEffect(() => {
+    if (teacherId) {
+      fetchResources();
+    }
+  }, [teacherId]);
+
+  const fetchTeacherInfo = async () => {
+    try {
+      const userData = await AsyncStorage.getItem('userData');
+      if (userData) {
+        const parsed = JSON.parse(userData);
+        setTeacherId(parsed.uid || '');
+        setTeacherName(parsed.name || parsed.fullName || '');
+      }
+    } catch (error) {
+      console.error('Error fetching teacher info:', error);
+    }
+  };
+
+  const fetchResources = async () => {
+    try {
+      setLoading(true);
+      const result = await getResources({
+        teacherId: teacherId
+      });
+      
+      if (result.success && result.resources) {
+        const mappedResources: Resource[] = result.resources.map((doc: any) => ({
+          id: doc.id,
+          subject: doc.subject || '',
+          class: doc.class || '',
+          title: doc.title || '',
+          type: doc.attachmentType || 'FILE',
+          attachmentFileName: doc.attachmentFileName || '',
+          attachmentType: doc.attachmentType || '',
+          createdAt: doc.createdAt?.toDate() || new Date(),
+          teacherId: doc.teacherId || '',
+          teacherName: doc.teacherName || '',
+        }));
+        setResources(mappedResources);
+      }
+    } catch (error) {
+      console.error('Error fetching resources:', error);
+      Alert.alert('Error', 'Failed to fetch resources');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const pickAttachment = async () => {
+    // Try document picker first for PDFs and other documents
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', '*/*'],
+        copyToCacheDirectory: true,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const asset = result.assets[0];
+        // Convert DocumentPicker result to ImagePickerAsset format for consistency
+        const attachmentAsset: ImagePickerAsset = {
+          uri: asset.uri,
+          width: 0,
+          height: 0,
+          fileName: asset.name,
+          type: 'image', // Default to image type for compatibility
+          fileSize: asset.size,
+        };
+        setAttachment(attachmentAsset);
+        setNewFileName(asset.name || 'UploadedFile');
+        return;
+      }
+    } catch (error) {
+      console.error('Document picker error:', error);
+      // Fall back to image picker if document picker fails
+    }
+
+    // Fall back to image picker for images and videos
     const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permissionResult.granted) {
       alert('Permission to access gallery is required!');
@@ -52,6 +144,51 @@ export default function ResourcesPage() {
     if (!result.canceled && result.assets && result.assets.length > 0) {
       setAttachment(result.assets[0]);
       setNewFileName(result.assets[0].fileName || 'UploadedFile');
+    }
+  };
+
+  const handleSaveResource = async () => {
+    if (!newFileName.trim() || !newClass.trim() || !newSubject.trim()) {
+      Alert.alert('Error', 'Please fill in all fields');
+      return;
+    }
+
+    if (!attachment) {
+      Alert.alert('Error', 'Please select a file to upload');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      
+      const resourceData = {
+        title: newFileName.trim(),
+        subject: newSubject.trim(),
+        class: newClass.trim(),
+        teacherId: teacherId,
+        teacherName: teacherName,
+        attachmentFileName: attachment?.fileName || undefined,
+        attachmentType: attachment?.type || undefined,
+      };
+
+      const result = await addResource(resourceData);
+      
+      if (result.success) {
+        Alert.alert('Success', 'Resource uploaded successfully');
+        setNewFileName('');
+        setNewClass(selectedClass);
+        setNewSubject(selectedSubject);
+        setAttachment(undefined);
+        setUploadModalVisible(false);
+        fetchResources(); // Refresh the list
+      } else {
+        Alert.alert('Error', result.error || 'Failed to upload resource');
+      }
+    } catch (error) {
+      console.error('Error saving resource:', error);
+      Alert.alert('Error', 'Failed to save resource');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -76,8 +213,8 @@ export default function ResourcesPage() {
       <View style={styles.profileCard}>
         <Image source={require('../../../assets/images/icon.png')} style={styles.avatar} />
         <View style={{ marginLeft: 14 }}>
-          <Text style={styles.teacherName}>Ms. Priya Sharma</Text>
-          <Text style={styles.teacherClass}>Class Teacher - 10</Text>
+          <Text style={styles.teacherName}>{teacherName || 'Ms. Priya Sharma'}</Text>
+          <Text style={styles.teacherClass}>Class Teacher - {selectedClass}</Text>
         </View>
       </View>
       {/* Upload Button */}
@@ -135,28 +272,12 @@ export default function ResourcesPage() {
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.modalBtn, { backgroundColor: ACCENT }]}
-                onPress={() => {
-                  if (newFileName.trim() && newClass.trim() && newSubject.trim()) {
-                    setResources([
-                      {
-                        id: Date.now(),
-                        subject: newSubject.trim(),
-                        class: newClass.trim(),
-                        file: newFileName.trim(),
-                        type: attachment && attachment.type ? attachment.type.split('/')[1].toUpperCase() : 'FILE',
-                        attachment,
-                      },
-                      ...resources,
-                    ]);
-                    setNewFileName('');
-                    setNewClass(selectedClass);
-                    setNewSubject(selectedSubject);
-                    setAttachment(undefined);
-                    setUploadModalVisible(false);
-                  }
-                }}
+                onPress={handleSaveResource}
+                disabled={loading}
               >
-                <Text style={[styles.modalBtnText, { color: '#fff' }]}>Save</Text>
+                <Text style={[styles.modalBtnText, { color: '#fff' }]}>
+                  {loading ? 'Saving...' : 'Save'}
+                </Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -175,14 +296,16 @@ export default function ResourcesPage() {
       </View>
       {/* Resource List */}
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 32 }}>
-        {filteredResources.length === 0 ? (
+        {loading ? (
+          <Text style={{ color: GRAY, textAlign: 'center', marginTop: 32 }}>Loading resources...</Text>
+        ) : filteredResources.length === 0 ? (
           <Text style={{ color: GRAY, textAlign: 'center', marginTop: 32 }}>No resources found.</Text>
         ) : (
           filteredResources.map((r, idx) => (
             <View key={r.id} style={styles.resourceCard}>
               <View style={{ flex: 1 }}>
                 <Text style={styles.resourceSubject}>{r.subject} - Class {r.class}</Text>
-                <Text style={styles.resourceFile}>{r.file}</Text>
+                <Text style={styles.resourceFile}>{r.title}</Text>
                 {'attachment' in r && r.attachment && (
                   <View style={styles.attachmentPreview}>
                     {r.attachment.type && r.attachment.type.startsWith('image') ? (

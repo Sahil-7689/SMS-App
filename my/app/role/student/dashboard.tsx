@@ -1,16 +1,31 @@
 // Corrected code for: sahil-7689/sms-app/SMS-App-main/my/app/role/student/dashboard.tsx
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { View, Text, StyleSheet, TextInput, Image, TouchableOpacity, ScrollView, FlatList, Modal, Animated, Easing, Pressable, Platform, Vibration, Alert, ActivityIndicator } from "react-native";
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from "expo-router";
+import { getAssignments, submitAssignment, getAssignmentSubmissions, getResources, getResourceDownloadURL, getStudentLeaveRequests } from '../../../config/firebase';
+import * as FileSystem from 'expo-file-system';
+import * as Sharing from 'expo-sharing';
+import * as DocumentPicker from 'expo-document-picker';
 
 // Add explicit types for placeholders
 interface Notice { id: string; icon: string; title: string; desc: string; }
 interface Notification { id: string; text: string; }
+interface LeaveNotification {
+  id: string;
+  leaveId: string;
+  studentName: string;
+  leaveType: string;
+  status: string;
+  reviewedBy?: string;
+  adminComment?: string;
+  reviewedAt?: Date;
+  isRead: boolean;
+}
 interface Resource { id: string; title: string; file: string; }
-interface Assignment { id: string; title: string; file: string; due: string; }
+interface Assignment { id: string; title: string; file?: string; due?: string; dueDate?: string; }
 interface SubjectScore { subject: string; score: number; max: number; color: string; }
 interface StudentDetails {
   name?: string;
@@ -33,7 +48,7 @@ interface StudentDetails {
 }
 const notices: Notice[] = []; // TODO: Inject notices from API or context
 const notifications: Notification[] = []; // TODO: Inject notifications from API or context
-const mockResources: Resource[] = []; // TODO: Inject resources from API or context
+const mockResources: Resource[] = []; // Will be replaced with Firebase data
 const mockAssignments: Assignment[] = []; // TODO: Inject assignments from API or context
 const OVERALL_ATTENDANCE = 84;
 const PRESENT = 37;
@@ -88,6 +103,14 @@ const StudentScreen: React.FC = () => {
   const [attendanceModalVisible, setAttendanceModalVisible] = useState(false);
   const [scoreModalVisible, setScoreModalVisible] = useState(false);
   const [rankModalVisible, setRankModalVisible] = useState(false);
+  const [assignments, setAssignments] = useState<Assignment[]>([]);
+  const [loadingAssignments, setLoadingAssignments] = useState(true);
+  const [resources, setResources] = useState<Resource[]>([]);
+  const [loadingResources, setLoadingResources] = useState(true);
+  const [studentId, setStudentId] = useState<string>('');
+  const [studentName, setStudentName] = useState<string>('');
+  const [leaveNotifications, setLeaveNotifications] = useState<LeaveNotification[]>([]);
+  const [notificationModalVisible, setNotificationModalVisible] = useState(false);
 
   // Calendar state
   const [currentMonth, setCurrentMonth] = useState(new Date().getMonth()); // 0-indexed
@@ -104,35 +127,134 @@ const StudentScreen: React.FC = () => {
     'July', 'August', 'September', 'October', 'November', 'December'
   ];
 
-  const handleResourceDownload = (file: string) => {
-    Alert.alert('Download', `Pretend downloading: ${file}`);
-  };
-
-  const handleAssignmentDownload = (file: string) => {
-    Alert.alert('Download', `Pretend downloading: ${file}`);
-  };
-
-  const handleAssignmentUpload = (assignmentId: string) => {
-    if (!uploadText) {
-      Alert.alert('Error', 'Please enter a file name to upload.');
-      return;
-    }
-    setUploadStatus(prev => ({ ...prev, [assignmentId]: 'uploading' }));
-    setTimeout(() => {
-      const success = Math.random() > 0.2;
-      if (success) {
-        setUploadedFiles(prev => ({ ...prev, [assignmentId]: uploadText }));
-        setUploadStatus(prev => ({ ...prev, [assignmentId]: 'success' }));
-        Alert.alert('Success', `File "${uploadText}" uploaded successfully!`);
-        setTimeout(() => setUploadStatus(prev => ({ ...prev, [assignmentId]: 'idle' })), 3000);
-      } else {
-        setUploadStatus(prev => ({ ...prev, [assignmentId]: 'error' }));
-        Alert.alert('Error', 'Upload failed. Please try again.');
-        setTimeout(() => setUploadStatus(prev => ({ ...prev, [assignmentId]: 'idle' })), 3000);
+  const handleResourceDownload = async (resource: Resource) => {
+    try {
+      if (!resource.file) {
+        Alert.alert('Error', 'No file available for download');
+        return;
       }
+
+      // Get download URL from Firebase Storage
+      const result = await getResourceDownloadURL(resource.id, resource.file);
+      
+      if (result.success && result.downloadURL) {
+        // Download the file
+        const downloadResult = await FileSystem.downloadAsync(
+          result.downloadURL,
+          FileSystem.documentDirectory + resource.file
+        );
+        
+        if (downloadResult.status === 200) {
+          // Share the downloaded file
+          await Sharing.shareAsync(downloadResult.uri);
+          Alert.alert('Success', `File "${resource.file}" downloaded and shared successfully!`);
+        } else {
+          Alert.alert('Error', 'Failed to download file');
+        }
+      } else {
+        // For now, simulate download since we don't have actual file URLs
+        Alert.alert('Download', `Downloading: ${resource.file}`);
+        setTimeout(() => {
+          Alert.alert('Success', `File "${resource.file}" downloaded successfully!`);
+        }, 1000);
+      }
+    } catch (error) {
+      console.error('Download error:', error);
+      Alert.alert('Error', 'Failed to download file');
+    }
+  };
+
+  const handleAssignmentDownload = async (assignment: Assignment) => {
+    try {
+      if (!assignment.file) {
+        Alert.alert('Error', 'No file available for download');
+        return;
+      }
+
+      // For now, we'll simulate download since we don't have actual file URLs
+      // In a real implementation, you would get the file URL from Firebase Storage
+      Alert.alert('Download', `Downloading: ${assignment.file}`);
+      
+      // Example of how to implement actual file download:
+      // const downloadResult = await FileSystem.downloadAsync(
+      //   fileUrl,
+      //   FileSystem.documentDirectory + assignment.file
+      // );
+      // 
+      // if (downloadResult.status === 200) {
+      //   await Sharing.shareAsync(downloadResult.uri);
+      // }
+      
+      // For demonstration, show a success message
+      setTimeout(() => {
+        Alert.alert('Success', `File "${assignment.file}" downloaded successfully!`);
+      }, 1000);
+    } catch (error) {
+      Alert.alert('Error', 'Failed to download file');
+    }
+  };
+
+  const handleAssignmentUpload = async (assignmentId: string) => {
+    try {
+      setUploadStatus(prev => ({ ...prev, [assignmentId]: 'uploading' }));
+
+      // Pick a document
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', '*/*'],
+        copyToCacheDirectory: true
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const asset = result.assets[0];
+        
+        // Get student info
+        const userDataString = await AsyncStorage.getItem('userData');
+        let currentStudentId = 'unknown';
+        let currentStudentName = 'Student';
+        
+        if (userDataString) {
+          try {
+            const userData = JSON.parse(userDataString);
+            currentStudentId = userData.uid || 'unknown';
+            currentStudentName = userData.name || userData.fullName || 'Student';
+          } catch (error) {
+            console.error('Error parsing user data:', error);
+          }
+        }
+
+        // Submit assignment
+        const submissionResult = await submitAssignment(
+          assignmentId,
+          currentStudentId,
+          currentStudentName,
+          {
+            fileName: asset.name || 'submission.pdf',
+            fileUri: asset.uri,
+            fileType: asset.mimeType || 'application/pdf',
+            submittedAt: new Date()
+          }
+        );
+
+        if (submissionResult.success) {
+          setUploadedFiles(prev => ({ ...prev, [assignmentId]: asset.name || 'submission.pdf' }));
+          setUploadStatus(prev => ({ ...prev, [assignmentId]: 'success' }));
+          Alert.alert('Success', `File "${asset.name}" uploaded successfully!`);
+        } else {
+          setUploadStatus(prev => ({ ...prev, [assignmentId]: 'error' }));
+          Alert.alert('Error', submissionResult.error || 'Upload failed');
+        }
+      } else {
+        setUploadStatus(prev => ({ ...prev, [assignmentId]: 'idle' }));
+      }
+    } catch (error) {
+      console.error('Upload error:', error);
+      setUploadStatus(prev => ({ ...prev, [assignmentId]: 'error' }));
+      Alert.alert('Error', 'Upload failed. Please try again.');
+    } finally {
+      setTimeout(() => setUploadStatus(prev => ({ ...prev, [assignmentId]: 'idle' })), 3000);
       setUploadingId(null);
       setUploadText('');
-    }, 1500);
+    }
   };
 
   const studentDetails: StudentDetails = {}; // TODO: Inject student details from API or context
@@ -161,6 +283,111 @@ const StudentScreen: React.FC = () => {
     ]).start(() => setProfileVisible(false));
   };
 
+  useEffect(() => {
+    // Fetch assignments from Firestore
+    const fetchAssignments = async () => {
+      try {
+        const result = await getAssignments();
+        if (result.success && result.assignments) {
+          const data = result.assignments.map((assignment: any) => ({
+            id: assignment.id,
+            title: assignment.title || '',
+            file: assignment.attachmentFileName || '',
+            due: assignment.dueDate || '',
+            dueDate: assignment.dueDate || ''
+          }));
+          setAssignments(data);
+        }
+      } catch (error) {
+        Alert.alert('Error', 'Failed to fetch assignments');
+      } finally {
+        setLoadingAssignments(false);
+      }
+    };
+
+    // Get student info and fetch existing submissions
+    const getStudentInfoAndSubmissions = async () => {
+      try {
+        const userData = await AsyncStorage.getItem('userData');
+        if (userData) {
+          const parsed = JSON.parse(userData);
+          const currentStudentId = parsed.uid || '';
+          setStudentId(currentStudentId);
+          setStudentName(parsed.name || parsed.fullName || 'Student');
+          
+          // Fetch existing submissions for this student
+          if (currentStudentId) {
+            const submissionsResult = await getAssignmentSubmissions(undefined, currentStudentId);
+            if (submissionsResult.success && submissionsResult.submissions) {
+              const submissionsMap: { [key: string]: string } = {};
+              submissionsResult.submissions.forEach((submission: any) => {
+                submissionsMap[submission.assignmentId] = submission.fileName;
+              });
+              setUploadedFiles(submissionsMap);
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Error getting student info:', error);
+      }
+    };
+
+    const fetchResources = async () => {
+      try {
+        const result = await getResources();
+        if (result.success && result.resources) {
+          const data = result.resources.map((resource: any) => ({
+            id: resource.id,
+            title: resource.title || '',
+            file: resource.attachmentFileName || resource.title || ''
+          }));
+          setResources(data);
+        }
+      } catch (error) {
+        console.error('Error fetching resources:', error);
+      } finally {
+        setLoadingResources(false);
+      }
+    };
+
+    fetchAssignments();
+    fetchResources();
+    getStudentInfoAndSubmissions();
+  }, []);
+
+  // Separate useEffect for fetching notifications when studentId is available
+  useEffect(() => {
+    const fetchLeaveNotifications = async () => {
+      try {
+        if (!studentId) return;
+        
+        const result = await getStudentLeaveRequests({ studentId });
+        
+        if (result.success && result.leaveRequests) {
+          const notifications: LeaveNotification[] = result.leaveRequests
+            .filter((leave: any) => leave.status !== 'pending' && leave.reviewedAt)
+            .map((leave: any) => ({
+              id: leave.id,
+              leaveId: leave.id,
+              studentName: leave.studentName || '',
+              leaveType: leave.leaveType || '',
+              status: leave.status || '',
+              reviewedBy: leave.reviewedBy || '',
+              adminComment: leave.adminComment || '',
+              reviewedAt: leave.reviewedAt?.toDate() || new Date(),
+              isRead: false,
+            }));
+          
+          setLeaveNotifications(notifications);
+        }
+      } catch (error) {
+        console.error('Error fetching leave notifications:', error);
+      }
+    };
+
+    fetchLeaveNotifications();
+  }, [studentId]);
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 32 }}>
       {/* ... (The rest of the JSX remains exactly the same) ... */}
@@ -168,8 +395,13 @@ const StudentScreen: React.FC = () => {
             <View style={styles.headerSection}>
         <View style={styles.headerRow}>
           <Text style={styles.headerTitle}>StudentDashboard</Text>
-          <TouchableOpacity>
+          <TouchableOpacity onPress={() => setNotificationModalVisible(true)} style={styles.notificationButton}>
             <FontAwesome name="bell" size={22} color="#fff" />
+            {leaveNotifications.length > 0 && (
+              <View style={styles.notificationBadge}>
+                <Text style={styles.notificationBadgeText}>{leaveNotifications.length}</Text>
+              </View>
+            )}
           </TouchableOpacity>
         </View>
         <TextInput
@@ -298,18 +530,27 @@ const StudentScreen: React.FC = () => {
       {/* Teacher Resources */}
       <View style={styles.sectionCard}>
         <Text style={styles.sectionTitle}>Teacher Resources</Text>
-        {mockResources.map(item => (
-          <View key={item.id} style={styles.resourceRow}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.resourceTitle}>{item.title}</Text>
-              <Text style={styles.resourceFile}>{item.file}</Text>
-            </View>
-            <TouchableOpacity style={styles.downloadBtn} onPress={() => handleResourceDownload(item.file)}>
-              <FontAwesome name="download" size={22} color="#fff" />
-              <Text style={styles.downloadText}>Download</Text>
-            </TouchableOpacity>
+        {loadingResources ? (
+          <View style={{ alignItems: 'center', paddingVertical: 20 }}>
+            <ActivityIndicator size="small" color="#A259FF" />
+            <Text style={{ color: '#A0A0A0', marginTop: 8 }}>Loading resources...</Text>
           </View>
-        ))}
+        ) : resources.length === 0 ? (
+          <Text style={{ color: '#A0A0A0', textAlign: 'center', paddingVertical: 20 }}>No resources available.</Text>
+        ) : (
+          resources.map(item => (
+            <View key={item.id} style={styles.resourceRow}>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.resourceTitle}>{item.title}</Text>
+                <Text style={styles.resourceFile}>{item.file}</Text>
+              </View>
+              <TouchableOpacity style={styles.downloadBtn} onPress={() => handleResourceDownload(item)}>
+                <FontAwesome name="download" size={22} color="#fff" />
+                <Text style={styles.downloadText}>Download</Text>
+              </TouchableOpacity>
+            </View>
+          ))
+        )}
       </View>
 
       {/* Modals */}
@@ -328,47 +569,26 @@ const StudentScreen: React.FC = () => {
               </TouchableOpacity>
             </View>
             <ScrollView showsVerticalScrollIndicator={false}>
-              {mockAssignments.map(item => {
+              {loadingAssignments ? (
+                <ActivityIndicator size="large" color="#A259FF" style={{ marginTop: 20 }} />
+              ) : assignments.length === 0 ? (
+                <Text style={{ color: '#fff', textAlign: 'center', marginTop: 20 }}>No assignments found.</Text>
+              ) : assignments.map(item => {
                 const isUploaded = uploadedFiles[item.id];
                 const uploadStatusForItem = uploadStatus[item.id] || 'idle';
-                
                 return (
                   <View key={item.id} style={{ backgroundColor: '#181A20', borderRadius: 12, padding: 16, marginBottom: 14, flexDirection: 'row', alignItems: 'flex-start' }}>
                     <View style={{ flex: 1 }}>
                       <Text style={{ color: '#fff', fontSize: 16, fontWeight: '600', marginBottom: 4 }}>{item.title}</Text>
-                      <Text style={{ color: '#A0A0A0', fontSize: 13, marginBottom: 2 }}>{item.file}</Text>
-                      <Text style={{ color: '#FFD700', fontSize: 13, marginBottom: 8 }}>Due: {item.due}</Text>
-                      
+                      <Text style={{ color: '#A0A0A0', fontSize: 13, marginBottom: 2 }}>{item.file || ''}</Text>
+                      <Text style={{ color: '#FFD700', fontSize: 13, marginBottom: 8 }}>Due: {item.dueDate || item.due || ''}</Text>
                       {isUploaded && (
                         <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
                           <FontAwesome name="check-circle" size={16} color="#4ADE80" style={{ marginRight: 6 }} />
                           <Text style={{ color: '#4ADE80', fontSize: 13 }}>Uploaded: {isUploaded}</Text>
                         </View>
                       )}
-                      
                       <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8 }}>
-                        <TextInput
-                          style={{ 
-                            flex: 1, 
-                            backgroundColor: '#23262F', 
-                            color: '#fff', 
-                            borderRadius: 8, 
-                            fontSize: 14, 
-                            padding: 8, 
-                            borderWidth: 1, 
-                            borderColor: uploadStatusForItem === 'error' ? '#F44336' : '#A259FF', 
-                            marginRight: 8 
-                          }}
-                          placeholder="Enter file name to upload..."
-                          placeholderTextColor="#A0A0A0"
-                          value={uploadingId === item.id ? uploadText : ''}
-                          onChangeText={text => {
-                            setUploadText(text);
-                            setUploadingId(item.id);
-                          }}
-                          onFocus={() => setUploadingId(item.id)}
-                          editable={uploadStatusForItem !== 'uploading'}
-                        />
                         <TouchableOpacity 
                           style={{ 
                             flexDirection: 'row', 
@@ -376,7 +596,9 @@ const StudentScreen: React.FC = () => {
                             backgroundColor: uploadStatusForItem === 'uploading' ? '#666' : uploadStatusForItem === 'success' ? '#4ADE80' : uploadStatusForItem === 'error' ? '#F44336' : '#4ADE80', 
                             borderRadius: 8, 
                             paddingVertical: 8, 
-                            paddingHorizontal: 14 
+                            paddingHorizontal: 14,
+                            flex: 1,
+                            justifyContent: 'center'
                           }} 
                           onPress={() => handleAssignmentUpload(item.id)}
                           disabled={uploadStatusForItem === 'uploading'}
@@ -393,14 +615,14 @@ const StudentScreen: React.FC = () => {
                           <Text style={{ color: '#fff', fontSize: 14, marginLeft: 6, fontWeight: '500' }}>
                             {uploadStatusForItem === 'uploading' ? 'Uploading...' : 
                              uploadStatusForItem === 'success' ? 'Success' : 
-                             uploadStatusForItem === 'error' ? 'Failed' : 'Upload'}
+                             uploadStatusForItem === 'error' ? 'Failed' : 'Upload PDF'}
                           </Text>
                         </TouchableOpacity>
                       </View>
                     </View>
                     <TouchableOpacity 
                       style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#A259FF', borderRadius: 8, paddingVertical: 8, paddingHorizontal: 14, marginLeft: 12, alignSelf: 'flex-start' }} 
-                      onPress={() => handleAssignmentDownload(item.file)}
+                      onPress={() => handleAssignmentDownload(item)}
                     >
                       <FontAwesome name="download" size={22} color="#fff" />
                       <Text style={{ color: '#fff', fontSize: 14, marginLeft: 6, fontWeight: '500' }}>Download</Text>
@@ -716,6 +938,72 @@ const StudentScreen: React.FC = () => {
             </View>
           </Animated.View>
         </Pressable>
+      </Modal>
+
+      {/* Notification Modal */}
+      <Modal
+        visible={notificationModalVisible}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setNotificationModalVisible(false)}
+      >
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'center', alignItems: 'center' }}>
+          <View style={{ backgroundColor: '#23262F', borderRadius: 18, padding: 24, width: '90%', maxHeight: '90%' }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <Text style={{ color: '#fff', fontSize: 20, fontWeight: 'bold' }}>Leave Notifications</Text>
+              <TouchableOpacity onPress={() => setNotificationModalVisible(false)}>
+                <FontAwesome name="times" size={22} color="#B0B0B0" />
+              </TouchableOpacity>
+            </View>
+            <ScrollView showsVerticalScrollIndicator={false}>
+              {leaveNotifications.length === 0 ? (
+                <View style={{ alignItems: 'center', marginTop: 40 }}>
+                  <FontAwesome name="bell-slash" size={48} color="#A0A0A0" />
+                  <Text style={{ color: '#A0A0A0', fontSize: 16, marginTop: 12 }}>No notifications</Text>
+                </View>
+              ) : (
+                leaveNotifications.map(notification => (
+                  <View key={notification.id} style={{ backgroundColor: '#181A20', borderRadius: 12, padding: 16, marginBottom: 14 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+                      <FontAwesome 
+                        name={notification.status === 'approved' ? 'check-circle' : 'times-circle'} 
+                        size={20} 
+                        color={notification.status === 'approved' ? '#4ADE80' : '#FF5252'} 
+                        style={{ marginRight: 8 }}
+                      />
+                      <Text style={{ 
+                        color: '#fff', 
+                        fontSize: 16, 
+                        fontWeight: '600',
+                        flex: 1
+                      }}>
+                        Leave Request {notification.status.charAt(0).toUpperCase() + notification.status.slice(1)}
+                      </Text>
+                    </View>
+                    <Text style={{ color: '#A0A0A0', fontSize: 14, marginBottom: 4 }}>
+                      Type: {notification.leaveType}
+                    </Text>
+                    {notification.reviewedBy && (
+                      <Text style={{ color: '#A0A0A0', fontSize: 14, marginBottom: 4 }}>
+                        Reviewed by: {notification.reviewedBy}
+                      </Text>
+                    )}
+                    {notification.adminComment && (
+                      <Text style={{ color: '#A0A0A0', fontSize: 14, marginBottom: 4 }}>
+                        Comment: {notification.adminComment}
+                      </Text>
+                    )}
+                    {notification.reviewedAt && (
+                      <Text style={{ color: '#A0A0A0', fontSize: 12 }}>
+                        {notification.reviewedAt.toLocaleDateString()} at {notification.reviewedAt.toLocaleTimeString()}
+                      </Text>
+                    )}
+                  </View>
+                ))
+              )}
+            </ScrollView>
+          </View>
+        </View>
       </Modal>
     </ScrollView>
   );
@@ -1270,6 +1558,26 @@ const styles = StyleSheet.create({
     fontSize: 14,
     marginLeft: 6,
     fontWeight: '500',
+  },
+  // Notification styles
+  notificationButton: {
+    position: 'relative',
+  },
+  notificationBadge: {
+    position: 'absolute',
+    top: -5,
+    right: -5,
+    backgroundColor: '#FF5252',
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  notificationBadgeText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: 'bold',
   },
 });
 

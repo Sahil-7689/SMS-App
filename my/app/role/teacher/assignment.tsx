@@ -1,8 +1,11 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image, ScrollView, Modal, TextInput, Platform, KeyboardAvoidingView } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Image, ScrollView, Modal, TextInput, Platform, KeyboardAvoidingView, Alert } from 'react-native';
 import { Ionicons, Feather } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import * as DocumentPicker from 'expo-document-picker';
 import type { ImagePickerAsset } from 'expo-image-picker';
+import { addAssignment, getAssignments } from '../../../config/firebase';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const ACCENT = '#A259FF';
 const BG_DARK = '#181A20';
@@ -30,19 +33,82 @@ const ASSIGNMENTS: Assignment[] = []; // TODO: Inject assignments from API or co
 export default function AssignmentTab() {
   const [selectedClass, setSelectedClass] = useState('10');
   const [selectedSubject, setSelectedSubject] = useState('SS');
-  const [assignments, setAssignments] = useState<Assignment[]>(ASSIGNMENTS);
+  const [assignments, setAssignments] = useState<Assignment[]>([]);
   const [addModalVisible, setAddModalVisible] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [newDue, setNewDue] = useState('');
   const [newClass, setNewClass] = useState(selectedClass);
   const [newSubject, setNewSubject] = useState(selectedSubject);
   const [attachment, setAttachment] = useState<ImagePickerAsset | undefined>(undefined);
+  const [loading, setLoading] = useState(false);
+
+  // Fetch assignments from Firebase on component mount
+  useEffect(() => {
+    fetchAssignments();
+  }, []);
+
+  const fetchAssignments = async () => {
+    try {
+      const result = await getAssignments({
+        class: selectedClass,
+        subject: selectedSubject
+      });
+      
+      if (result.success && result.assignments) {
+        const firebaseAssignments = result.assignments.map((assignment: any) => ({
+          id: assignment.id,
+          title: assignment.title,
+          due: assignment.dueDate,
+          class: assignment.class,
+          subject: assignment.subject,
+          attachment: assignment.attachmentFileName ? {
+            uri: '',
+            width: 0,
+            height: 0,
+            fileName: assignment.attachmentFileName,
+            type: assignment.attachmentType || 'application/octet-stream',
+            fileSize: 0
+          } : undefined
+        }));
+        setAssignments(firebaseAssignments);
+      }
+    } catch (error) {
+      console.error('Error fetching assignments:', error);
+    }
+  };
 
   const filteredAssignments = assignments.filter(
     a => a.class === selectedClass && a.subject === selectedSubject
   );
 
   const pickAttachment = async () => {
+    // Try document picker first for PDFs and other documents
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document', '*/*'],
+        copyToCacheDirectory: true,
+      });
+
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const asset = result.assets[0];
+        // Convert DocumentPicker result to ImagePickerAsset format for consistency
+        const attachmentAsset: ImagePickerAsset = {
+          uri: asset.uri,
+          width: 0,
+          height: 0,
+          fileName: asset.name,
+          type: 'image', // Default to image type for compatibility
+          fileSize: asset.size,
+        };
+        setAttachment(attachmentAsset);
+        return;
+      }
+    } catch (error) {
+      console.error('Document picker error:', error);
+      // Fall back to image picker if document picker fails
+    }
+
+    // Fall back to image picker for images and videos
     const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permissionResult.granted) {
       alert('Permission to access gallery is required!');
@@ -55,6 +121,52 @@ export default function AssignmentTab() {
     });
     if (!result.canceled && result.assets && result.assets.length > 0) {
       setAttachment(result.assets[0]);
+    }
+  };
+
+  const handleSaveAssignment = async () => {
+    if (!newTitle.trim() || !newDue.trim() || !newClass.trim() || !newSubject.trim()) {
+      Alert.alert('Error', 'Please fill in all required fields');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      // Get teacher info from AsyncStorage
+      const userDataString = await AsyncStorage.getItem('userData');
+      const userData = userDataString ? JSON.parse(userDataString) : {};
+
+      const assignmentData = {
+        title: newTitle.trim(),
+        dueDate: newDue.trim(),
+        class: newClass.trim(),
+        subject: newSubject.trim(),
+        teacherId: userData.uid || 'unknown',
+        teacherName: userData.name || 'Unknown Teacher',
+        attachmentFileName: attachment?.fileName || undefined,
+        attachmentType: attachment?.type || undefined
+      };
+
+      const result = await addAssignment(assignmentData);
+      
+      if (result.success) {
+        Alert.alert('Success', 'Assignment created successfully!');
+        setNewTitle('');
+        setNewDue('');
+        setNewClass(selectedClass);
+        setNewSubject(selectedSubject);
+        setAttachment(undefined);
+        setAddModalVisible(false);
+        
+        // Refresh assignments list
+        fetchAssignments();
+      } else {
+        Alert.alert('Error', result.error || 'Failed to create assignment');
+      }
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to create assignment');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -150,29 +262,10 @@ export default function AssignmentTab() {
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.modalBtn, { backgroundColor: ACCENT }]}
-                onPress={() => {
-                  if (newTitle.trim() && newDue.trim() && newClass.trim() && newSubject.trim()) {
-                    setAssignments([
-                      {
-                        id: Date.now(),
-                        title: newTitle.trim(),
-                        due: newDue.trim(),
-                        class: newClass.trim(),
-                        subject: newSubject.trim(),
-                        attachment,
-                      },
-                      ...assignments,
-                    ]);
-                    setNewTitle('');
-                    setNewDue('');
-                    setNewClass(selectedClass);
-                    setNewSubject(selectedSubject);
-                    setAttachment(undefined);
-                    setAddModalVisible(false);
-                  }
-                }}
+                onPress={handleSaveAssignment}
+                disabled={loading}
               >
-                <Text style={[styles.modalBtnText, { color: '#fff' }]}>Save</Text>
+                <Text style={[styles.modalBtnText, { color: '#fff' }]}>{loading ? 'Saving...' : 'Save'}</Text>
               </TouchableOpacity>
             </View>
           </View>

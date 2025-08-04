@@ -1,14 +1,15 @@
 import React, { useState, useEffect } from "react";
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, Image, ScrollView, Switch } from "react-native";
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, Image, ScrollView, Switch, Alert } from "react-native";
 import { useRouter } from "expo-router";
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { loginUser } from "../../config/firebase";
 
 export default function AdminLogin() {
   const [showPassword, setShowPassword] = useState(false);
   const [rememberMe, setRememberMe] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
@@ -31,20 +32,41 @@ export default function AdminLogin() {
   }, []);
 
   const handleLogin = async () => {
-    if (email === "admin@admin.com" && password === "123456789") {
-      setError("");
-      if (rememberMe) {
-        await AsyncStorage.setItem('adminRememberMe', 'true');
-        await AsyncStorage.setItem('adminEmail', email);
-        await AsyncStorage.setItem('adminPassword', password);
+    if (!email.trim() || !password.trim()) {
+      Alert.alert('Error', 'Please enter both email and password');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const result = await loginUser(email, password);
+      
+      if (result.success && result.userData?.role === 'admin') {
+        // Save credentials if Remember Me is checked
+        if (rememberMe) {
+          await AsyncStorage.setItem('adminRememberMe', 'true');
+          await AsyncStorage.setItem('adminEmail', email);
+          await AsyncStorage.setItem('adminPassword', password);
+        } else {
+          await AsyncStorage.removeItem('adminRememberMe');
+          await AsyncStorage.removeItem('adminEmail');
+          await AsyncStorage.removeItem('adminPassword');
+        }
+        
+        // Save user data to AsyncStorage for app-wide access
+        await AsyncStorage.setItem('userData', JSON.stringify(result.userData));
+        await AsyncStorage.setItem('userRole', 'admin');
+        
+        router.replace("/role/admin");
+      } else if (result.success && result.userData?.role !== 'admin') {
+        Alert.alert('Error', 'This account is not registered as an admin');
       } else {
-        await AsyncStorage.removeItem('adminRememberMe');
-        await AsyncStorage.removeItem('adminEmail');
-        await AsyncStorage.removeItem('adminPassword');
+        Alert.alert('Error', result.error || 'Login failed');
       }
-      router.replace("/role/admin");
-    } else {
-      setError("Invalid credentials");
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Login failed');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -110,8 +132,6 @@ export default function AdminLogin() {
               </Text>
             </TouchableOpacity>
           </View>
-          {/* Error Message */}
-          {error ? <Text style={styles.errorText}>{error}</Text> : null}
           {/* Remember Me and Forgot Password */}
           <View style={styles.row}>
             <View style={styles.rememberMeRow}>
@@ -128,8 +148,14 @@ export default function AdminLogin() {
             </TouchableOpacity>
           </View>
           {/* Login Button */}
-          <TouchableOpacity style={styles.loginButton} onPress={handleLogin}>
-            <Text style={styles.loginButtonText}>Login</Text>
+          <TouchableOpacity 
+            style={[styles.loginButton, loading && styles.loginButtonDisabled]} 
+            onPress={handleLogin}
+            disabled={loading}
+          >
+            <Text style={styles.loginButtonText}>
+              {loading ? 'Logging in...' : 'Login'}
+            </Text>
           </TouchableOpacity>
           {/* Register Section */}
           <View style={styles.registerSection}>
@@ -193,6 +219,10 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginTop: 16,
   },
+  loginButtonDisabled: {
+    backgroundColor: "#64748b",
+    opacity: 0.7,
+  },
   loginButtonText: { color: "#fff", fontSize: 16, fontWeight: "bold" },
   registerSection: { marginTop: 24, alignItems: "center" },
   registerText: { color: "#cbd5e1", fontSize: 14 },
@@ -205,5 +235,4 @@ const styles = StyleSheet.create({
     width: "100%",
   },
   registerButtonText: { color: "#fff", fontSize: 16, fontWeight: "bold" },
-  errorText: { color: 'red', marginBottom: 8, textAlign: 'center' },
 });

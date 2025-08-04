@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -13,9 +13,18 @@ import {
   SafeAreaView,
   Platform,
   Alert,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { FontAwesome } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
+import { 
+  getComplaints, 
+  updateComplaint, 
+  deleteComplaint,
+  getComplaintStats,
+  auth 
+} from '../../../config/firebase';
 
 const { width } = Dimensions.get('window');
 
@@ -36,57 +45,63 @@ const COLORS = {
 const FILTERS = [
   { key: 'all', label: 'All Complaints' },
   { key: 'pending', label: 'Pending' },
-  { key: 'progress', label: 'In Progress' },
+  { key: 'in-progress', label: 'In Progress' },
   { key: 'resolved', label: 'Resolved' },
-  { key: 'urgent', label: 'Urgent' },
+  { key: 'rejected', label: 'Rejected' },
 ];
 
 const STATUS_COLORS = {
   urgent: COLORS.urgent,
   pending: COLORS.pending,
-  progress: COLORS.progress,
+  'in-progress': COLORS.progress,
   resolved: COLORS.resolved,
+  rejected: COLORS.urgent,
 };
 
-// --- MOCK DATA ---
-
-type ComplaintStatus = 'urgent' | 'pending' | 'progress' | 'resolved';
-type ComplaintPriority = 'Low' | 'Medium' | 'High';
-
-interface ComplaintHistory {
-  date: string;
-  action: string;
-  by: string;
-}
+// --- TYPES ---
+type ComplaintStatus = 'pending' | 'in-progress' | 'resolved' | 'rejected';
+type ComplaintPriority = 'low' | 'medium' | 'high';
 
 interface Complaint {
   id: string;
-  status: ComplaintStatus;
+  title: string;
   description: string;
-  date: string;
+  category: string;
+  status: ComplaintStatus;
   priority: ComplaintPriority;
-  customer: string;
-  history: ComplaintHistory[];
-  attachments: any[];
+  studentId: string;
+  studentName: string;
+  studentClass?: string;
+  createdAt: any;
+  updatedAt: any;
+  adminResponse?: string;
+  adminId?: string;
+  adminName?: string;
+  resolvedAt?: string;
 }
-
-const MOCK_COMPLAINTS: Complaint[] = []; // TODO: Inject complaints from API or context
 
 // --- HELPER FUNCTIONS ---
 function getStatusLabel(status: ComplaintStatus): string {
   switch (status) {
-    case 'urgent': return 'Urgent';
     case 'pending': return 'Pending';
-    case 'progress': return 'In Progress';
+    case 'in-progress': return 'In Progress';
     case 'resolved': return 'Resolved';
+    case 'rejected': return 'Rejected';
     default: return '';
   }
+}
+
+function formatDate(date: any): string {
+  if (!date) return '';
+  const d = date.toDate ? date.toDate() : new Date(date);
+  return d.toLocaleDateString();
 }
 
 // --- MAIN COMPONENT ---
 export default function ComplaintsPage() {
   // --- STATE MANAGEMENT ---
-  const [complaints, setComplaints] = useState<Complaint[]>(MOCK_COMPLAINTS);
+  const [complaints, setComplaints] = useState<Complaint[]>([]);
+  const [loading, setLoading] = useState(true);
   const [selectedFilter, setSelectedFilter] = useState<string>('all');
   const [search, setSearch] = useState<string>('');
   
@@ -97,69 +112,116 @@ export default function ComplaintsPage() {
   // Data States
   const [selectedComplaint, setSelectedComplaint] = useState<Complaint | null>(null);
   
-  // New Complaint Form State
-  const [newDescription, setNewDescription] = useState<string>('');
-  const [newCustomer, setNewCustomer] = useState<string>('');
-  const [newPriority, setNewPriority] = useState<ComplaintPriority>('Medium');
+  // Response Form State
+  const [adminResponse, setAdminResponse] = useState<string>('');
 
   // Animation State
   const [fabAnim] = useState<Animated.Value>(new Animated.Value(1));
+
+  useEffect(() => {
+    fetchComplaints();
+  }, []);
+
+  const fetchComplaints = async () => {
+    try {
+      setLoading(true);
+      const result = await getComplaints();
+      if (result.success && result.complaints) {
+        setComplaints(result.complaints);
+      } else {
+        console.error('Failed to fetch complaints:', result.error);
+      }
+    } catch (error) {
+      console.error('Error fetching complaints:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // --- DERIVED STATE (FILTERING) ---
   const filteredComplaints = useMemo(() =>
     complaints.filter((c: Complaint) =>
       (selectedFilter === 'all' || c.status === selectedFilter) &&
       (c.id.toLowerCase().includes(search.toLowerCase()) || 
+       c.title.toLowerCase().includes(search.toLowerCase()) ||
        c.description.toLowerCase().includes(search.toLowerCase()) ||
-       c.customer.toLowerCase().includes(search.toLowerCase()))
+       c.studentName.toLowerCase().includes(search.toLowerCase()))
     ), [complaints, selectedFilter, search]);
 
   // --- HANDLERS ---
-  const handleUpdateComplaint = (
+  const handleUpdateComplaint = async (
     complaintId: string,
     newStatus: ComplaintStatus,
-    notes: string = ''
-  ): void => {
-      setComplaints((prevComplaints: Complaint[]) => {
+    response?: string
+  ): Promise<void> => {
+    try {
+      const adminId = auth.currentUser?.uid;
+      const adminName = auth.currentUser?.displayName || 'Admin';
+      
+      const updateData: any = {
+        status: newStatus,
+        adminId,
+        adminName,
+      };
+      
+      if (response) {
+        updateData.adminResponse = response;
+      }
+      
+      const result = await updateComplaint(complaintId, updateData);
+      
+      if (result.success) {
+        // Update local state
+        setComplaints((prevComplaints: Complaint[]) => {
           const updatedComplaints = prevComplaints.map((c: Complaint) => {
-              if (c.id === complaintId) {
-                  const newHistory: ComplaintHistory[] = [...c.history, {
-                      date: new Date().toISOString().split('T')[0],
-                      action: `Status changed to ${getStatusLabel(newStatus)}. ${notes ? `Notes: ${notes}` : ''}`,
-                      by: 'Admin'
-                  }];
-                  return { ...c, status: newStatus, history: newHistory };
-              }
-              return c;
+            if (c.id === complaintId) {
+              return { 
+                ...c, 
+                status: newStatus,
+                adminResponse: response || c.adminResponse,
+                adminId,
+                adminName,
+                updatedAt: new Date()
+              };
+            }
+            return c;
           });
           return updatedComplaints;
-      });
-      // To ensure the selected complaint in the modal also reflects the change immediately
-      setSelectedComplaint((prev) => prev ? { ...prev, status: newStatus } : null);
+        });
+        
+        // Update selected complaint in modal
+        setSelectedComplaint((prev) => prev ? { 
+          ...prev, 
+          status: newStatus,
+          adminResponse: response || prev.adminResponse,
+          adminId,
+          adminName
+        } : null);
+        
+        setAdminResponse('');
+        Alert.alert('Success', `Complaint ${complaintId} updated successfully.`);
+      } else {
+        Alert.alert('Error', result.error || 'Failed to update complaint');
+      }
+    } catch (error: any) {
+      console.error('Error updating complaint:', error);
+      Alert.alert('Error', error.message || 'Failed to update complaint');
+    }
   };
   
-  const handleAddNewComplaint = (): void => {
-      if (!newDescription || !newCustomer) {
-          Alert.alert('Missing Information', 'Please fill out both description and customer name.');
-          return;
+  const handleDeleteComplaint = async (complaintId: string): Promise<void> => {
+    try {
+      const result = await deleteComplaint(complaintId);
+      if (result.success) {
+        setComplaints((prev) => prev.filter(c => c.id !== complaintId));
+        Alert.alert('Success', `Complaint ${complaintId} deleted successfully.`);
+      } else {
+        Alert.alert('Error', result.error || 'Failed to delete complaint');
       }
-      const newId = `CMP${(complaints.length + 1).toString().padStart(3, '0')}`;
-      const newComplaint: Complaint = {
-          id: newId,
-          status: 'pending',
-          description: newDescription,
-          date: new Date().toISOString().split('T')[0],
-          priority: newPriority,
-          customer: newCustomer,
-          history: [{ date: new Date().toISOString().split('T')[0], action: 'Submitted', by: newCustomer }],
-          attachments: [],
-      };
-      setComplaints((prev) => [newComplaint, ...prev]);
-      setAddModalVisible(false);
-      // Reset form
-      setNewDescription('');
-      setNewCustomer('');
-      setNewPriority('Medium');
+    } catch (error: any) {
+      console.error('Error deleting complaint:', error);
+      Alert.alert('Error', error.message || 'Failed to delete complaint');
+    }
   };
 
   const handleFabPress = (): void => {
@@ -174,10 +236,26 @@ export default function ComplaintsPage() {
     setDetailModalVisible(true);
   };
   
-  const handleQuickResolve = (complaintId: string): void => {
-      handleUpdateComplaint(complaintId, 'resolved');
-      Alert.alert('Success', `Complaint ${complaintId} marked as resolved.`);
-  }
+  const handleQuickResolve = async (complaintId: string): Promise<void> => {
+    await handleUpdateComplaint(complaintId, 'resolved');
+  };
+
+  const handleQuickReject = async (complaintId: string): Promise<void> => {
+    Alert.alert(
+      'Reject Complaint',
+      'Are you sure you want to reject this complaint?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Reject',
+          style: 'destructive',
+          onPress: async () => {
+            await handleUpdateComplaint(complaintId, 'rejected');
+          },
+        },
+      ]
+    );
+  };
 
   // --- RENDER METHODS ---
   const renderComplaintCard = ({ item }: { item: Complaint }) => (
@@ -189,30 +267,45 @@ export default function ComplaintsPage() {
       <View style={[styles.statusDot, { backgroundColor: STATUS_COLORS[item.status] }]} />
       <View style={{ flex: 1 }}>
         <Text style={styles.complaintId}>{item.id}</Text>
+        <Text style={styles.complaintTitle}>{item.title}</Text>
         <Text style={styles.complaintDesc} numberOfLines={2}>{item.description}</Text>
         <View style={styles.complaintMetaRow}>
-          <Text style={styles.complaintDate}>{item.date}</Text>
-          <Text style={styles.complaintPriority}>{item.priority}</Text>
+          <Text style={styles.complaintDate}>{formatDate(item.createdAt)}</Text>
+          <Text style={styles.complaintStudent}>{item.studentName}</Text>
+          <Text style={[styles.complaintPriority, { color: item.priority === 'high' ? '#FF6B6B' : item.priority === 'medium' ? '#FFC107' : '#4CAF50' }]}>
+            {item.priority.toUpperCase()}
+          </Text>
         </View>
       </View>
-      {item.status !== 'resolved' && (
+      {item.status !== 'resolved' && item.status !== 'rejected' && (
         <View style={styles.quickActions}>
           <TouchableOpacity style={styles.quickActionBtn} onPress={() => handleQuickResolve(item.id)}>
             <Ionicons name="checkmark-done" size={20} color={COLORS.resolved} />
           </TouchableOpacity>
-          <TouchableOpacity style={styles.quickActionBtn} onPress={() => Alert.alert('Assign', `Assigning complaint ${item.id}...`)}>
-            <Ionicons name="person-add" size={20} color={COLORS.accent} />
+          <TouchableOpacity style={styles.quickActionBtn} onPress={() => handleQuickReject(item.id)}>
+            <Ionicons name="close" size={20} color={COLORS.urgent} />
           </TouchableOpacity>
         </View>
       )}
     </TouchableOpacity>
   );
 
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={COLORS.accent} />
+          <Text style={styles.loadingText}>Loading complaints...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container}>
       {/* Header */}
       <View style={styles.headerSection}>
-        <Text style={styles.headerTitle}>Complaints Management</Text>
+        <Text style={styles.headerTitle}>Student Complaints</Text>
         <Text style={styles.headerCount}>{complaints.length} Total Complaints</Text>
       </View>
 
@@ -238,7 +331,7 @@ export default function ComplaintsPage() {
           <Ionicons name="search" size={18} color={COLORS.textSecondary} style={{ marginRight: 6 }} />
           <TextInput
             style={styles.searchInput}
-            placeholder="Search by ID, description, customer..."
+            placeholder="Search by ID, title, description, student..."
             placeholderTextColor={COLORS.textSecondary}
             value={search}
             onChangeText={setSearch}
@@ -253,6 +346,8 @@ export default function ComplaintsPage() {
         renderItem={renderComplaintCard}
         contentContainerStyle={{ paddingBottom: 120, paddingTop: 10 }}
         ListEmptyComponent={<Text style={styles.emptyText}>No complaints found.</Text>}
+        refreshing={loading}
+        onRefresh={fetchComplaints}
       />
 
       {/* --- MODALS --- */}
@@ -274,27 +369,76 @@ export default function ComplaintsPage() {
                   <Text style={styles.modalStatusLabel}>{getStatusLabel(selectedComplaint.status)}</Text>
                 </View>
                 <Text style={styles.modalId}>ID: {selectedComplaint.id}</Text>
+                <Text style={styles.modalTitle}>{selectedComplaint.title}</Text>
                 <Text style={styles.modalDesc}>{selectedComplaint.description}</Text>
                 
-                <Text style={styles.modalSection}>Customer Info</Text>
-                <Text style={styles.modalCustomer}>{selectedComplaint.customer}</Text>
+                <Text style={styles.modalSection}>Student Info</Text>
+                <Text style={styles.modalCustomer}>{selectedComplaint.studentName}</Text>
+                {selectedComplaint.studentClass && (
+                  <Text style={styles.modalCustomer}>Class: {selectedComplaint.studentClass}</Text>
+                )}
                 
-                <Text style={styles.modalSection}>History</Text>
-                {selectedComplaint.history.map((h: ComplaintHistory, idx: number) => (
-                  <Text key={idx} style={styles.modalHistory}>{h.date} - {h.action} by {h.by}</Text>
-                ))}
+                <Text style={styles.modalSection}>Complaint Details</Text>
+                <Text style={styles.modalHistory}>Category: {selectedComplaint.category}</Text>
+                <Text style={styles.modalHistory}>Priority: {selectedComplaint.priority.toUpperCase()}</Text>
+                <Text style={styles.modalHistory}>Submitted: {formatDate(selectedComplaint.createdAt)}</Text>
+                <Text style={styles.modalHistory}>Last Updated: {formatDate(selectedComplaint.updatedAt)}</Text>
+                
+                {selectedComplaint.adminResponse && (
+                  <>
+                    <Text style={styles.modalSection}>Admin Response</Text>
+                    <Text style={styles.modalHistory}>{selectedComplaint.adminResponse}</Text>
+                    {selectedComplaint.adminName && (
+                      <Text style={styles.modalHistory}>- {selectedComplaint.adminName}</Text>
+                    )}
+                  </>
+                )}
+                
+                <Text style={styles.modalSection}>Response</Text>
+                <TextInput 
+                   style={styles.resolutionInput} 
+                   placeholder="Enter your response..." 
+                   placeholderTextColor={COLORS.textSecondary} 
+                   multiline 
+                   value={adminResponse}
+                   onChangeText={setAdminResponse}
+                />
                 
                 <Text style={styles.modalSection}>Actions</Text>
                  <View style={styles.modalActionsRow}>
-                  <TouchableOpacity style={styles.modalActionBtn} onPress={() => handleUpdateComplaint(selectedComplaint.id, 'progress')}>
+                  <TouchableOpacity style={styles.modalActionBtn} onPress={() => handleUpdateComplaint(selectedComplaint.id, 'in-progress', adminResponse)}>
                     <Text style={styles.modalActionText}>In Progress</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity style={styles.modalActionBtn} onPress={() => handleUpdateComplaint(selectedComplaint.id, 'resolved')}>
+                  <TouchableOpacity style={styles.modalActionBtn} onPress={() => handleUpdateComplaint(selectedComplaint.id, 'resolved', adminResponse)}>
                     <Text style={styles.modalActionText}>Mark Resolved</Text>
                   </TouchableOpacity>
                 </View>
+                <View style={styles.modalActionsRow}>
+                  <TouchableOpacity style={[styles.modalActionBtn, { backgroundColor: COLORS.urgent }]} onPress={() => handleUpdateComplaint(selectedComplaint.id, 'rejected', adminResponse)}>
+                    <Text style={styles.modalActionText}>Reject</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={[styles.modalActionBtn, { backgroundColor: '#FF5722' }]} onPress={() => {
+                    Alert.alert(
+                      'Delete Complaint',
+                      'Are you sure you want to delete this complaint?',
+                      [
+                        { text: 'Cancel', style: 'cancel' },
+                        {
+                          text: 'Delete',
+                          style: 'destructive',
+                          onPress: () => handleDeleteComplaint(selectedComplaint.id)
+                        },
+                      ]
+                    );
+                  }}>
+                    <Text style={styles.modalActionText}>Delete</Text>
+                  </TouchableOpacity>
+                </View>
 
-                <TouchableOpacity style={styles.modalCloseBtn} onPress={() => setDetailModalVisible(false)}>
+                <TouchableOpacity style={styles.modalCloseBtn} onPress={() => {
+                  setDetailModalVisible(false);
+                  setAdminResponse('');
+                }}>
                   <Text style={styles.modalCloseText}>Close</Text>
                 </TouchableOpacity>
               </ScrollView>
@@ -302,57 +446,6 @@ export default function ComplaintsPage() {
           </View>
         </Modal>
       )}
-
-      {/* Add New Complaint Modal */}
-      <Modal
-        visible={addModalVisible}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setAddModalVisible(false)}
-      >
-          <View style={styles.modalOverlay}>
-            <View style={styles.modalContent}>
-              <ScrollView>
-                 <Text style={styles.modalTitle}>Add New Complaint</Text>
-                 
-                 <Text style={styles.modalSection}>Description</Text>
-                 <TextInput 
-                    style={styles.resolutionInput} 
-                    placeholder="Enter complaint details..." 
-                    placeholderTextColor={COLORS.textSecondary} 
-                    multiline 
-                    value={newDescription}
-                    onChangeText={setNewDescription}
-                 />
-
-                 <Text style={styles.modalSection}>Customer Name</Text>
-                 <TextInput 
-                    style={styles.resolutionInput} 
-                    placeholder="e.g., Priya Singh" 
-                    placeholderTextColor={COLORS.textSecondary}
-                    value={newCustomer}
-                    onChangeText={setNewCustomer}
-                 />
-
-                 <Text style={styles.modalSection}>Priority</Text>
-                 {/* A real app might use a picker here */}
-                 <View style={styles.prioritySelector}>
-                    <TouchableOpacity onPress={() => setNewPriority('Low')} style={[styles.priorityBtn, newPriority === 'Low' && styles.priorityBtnActive]}><Text style={styles.priorityBtnText}>Low</Text></TouchableOpacity>
-                    <TouchableOpacity onPress={() => setNewPriority('Medium')} style={[styles.priorityBtn, newPriority === 'Medium' && styles.priorityBtnActive]}><Text style={styles.priorityBtnText}>Medium</Text></TouchableOpacity>
-                    <TouchableOpacity onPress={() => setNewPriority('High')} style={[styles.priorityBtn, newPriority === 'High' && styles.priorityBtnActive]}><Text style={styles.priorityBtnText}>High</Text></TouchableOpacity>
-                 </View>
-
-                 <TouchableOpacity style={[styles.modalActionBtn, {backgroundColor: COLORS.resolved, marginTop: 20}]} onPress={handleAddNewComplaint}>
-                    <Text style={styles.modalActionText}>Submit Complaint</Text>
-                 </TouchableOpacity>
-
-                 <TouchableOpacity style={styles.modalCloseBtn} onPress={() => setAddModalVisible(false)}>
-                  <Text style={styles.modalCloseText}>Cancel</Text>
-                </TouchableOpacity>
-              </ScrollView>
-            </View>
-          </View>
-      </Modal>
 
       {/* Floating Action Button */}
       <Animated.View style={[styles.fabContainer, { transform: [{ scale: fabAnim }] }]}>
@@ -362,7 +455,7 @@ export default function ComplaintsPage() {
             start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }}
             style={styles.fab}
           >
-            <Ionicons name="add" size={28} color={COLORS.text} />
+            <FontAwesome name="refresh" size={24} color={COLORS.text} />
           </LinearGradient>
         </TouchableOpacity>
       </Animated.View>
@@ -376,6 +469,16 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: COLORS.background,
     paddingTop: Platform.OS === 'android' ? 25 : 0,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingText: {
+    color: COLORS.textSecondary,
+    marginTop: 16,
+    fontSize: 16,
   },
   headerSection: {
     alignItems: 'center',
@@ -457,6 +560,12 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '500',
   },
+  complaintTitle: {
+    color: COLORS.accent,
+    fontSize: 14,
+    fontWeight: '600',
+    marginTop: 2,
+  },
   complaintDesc: {
     color: COLORS.textSecondary,
     fontSize: 14,
@@ -472,8 +581,12 @@ const styles = StyleSheet.create({
     color: COLORS.textSecondary,
     fontSize: 13,
   },
+  complaintStudent: {
+    color: COLORS.text,
+    fontSize: 13,
+    fontWeight: '500',
+  },
   complaintPriority: {
-    color: COLORS.accent,
     fontSize: 13,
     fontWeight: '600',
   },
@@ -570,6 +683,8 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     paddingHorizontal: 20,
     alignItems: 'center',
+    flex: 1,
+    marginHorizontal: 4,
   },
   modalActionText: {
     color: COLORS.text,
@@ -605,26 +720,4 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  prioritySelector: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      marginBottom: 10,
-  },
-  priorityBtn: {
-      flex: 1,
-      padding: 12,
-      borderRadius: 8,
-      backgroundColor: COLORS.input,
-      alignItems: 'center',
-      marginHorizontal: 4,
-  },
-  priorityBtnActive: {
-      backgroundColor: COLORS.accent,
-      borderColor: COLORS.text,
-      borderWidth: 1,
-  },
-  priorityBtnText: {
-      color: COLORS.text,
-      fontWeight: '600',
-  }
 });

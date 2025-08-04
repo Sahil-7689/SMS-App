@@ -1,11 +1,91 @@
 import React, { useState } from "react";
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, Image, ScrollView } from "react-native";
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, Image, ScrollView, Alert } from "react-native";
 import { useRouter } from "expo-router";
+import { registerUser, saveAdminData } from "../../config/firebase";
 
 export default function AdminRegister() {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [formData, setFormData] = useState({
+    name: '',
+    email: '',
+    adminCode: '',
+    password: '',
+    confirmPassword: ''
+  });
   const router = useRouter();
+
+  const handleInputChange = (field: string, value: string) => {
+    setFormData(prev => ({ ...prev, [field]: value }));
+  };
+
+  const validateForm = () => {
+    if (!formData.name.trim()) {
+      Alert.alert('Error', 'Please enter your name');
+      return false;
+    }
+    if (!formData.email.trim()) {
+      Alert.alert('Error', 'Please enter your email');
+      return false;
+    }
+    if (!formData.adminCode.trim()) {
+      Alert.alert('Error', 'Please enter admin code');
+      return false;
+    }
+    if (formData.adminCode !== 'ADMIN2024') {
+      Alert.alert('Error', 'Invalid admin code');
+      return false;
+    }
+    if (formData.password.length < 6) {
+      Alert.alert('Error', 'Password must be at least 6 characters');
+      return false;
+    }
+    if (formData.password !== formData.confirmPassword) {
+      Alert.alert('Error', 'Passwords do not match');
+      return false;
+    }
+    return true;
+  };
+
+  const handleRegister = async () => {
+    if (!validateForm()) return;
+
+    setLoading(true);
+    try {
+      // Register user with Firebase Auth
+      const authResult = await registerUser(formData.email, formData.password, {
+        name: formData.name,
+        adminCode: formData.adminCode,
+        role: 'admin'
+      });
+
+      if (authResult.success) {
+        // Save additional admin data to Firestore
+        const adminDataResult = await saveAdminData({
+          uid: authResult.user.uid,
+          name: formData.name,
+          email: formData.email,
+          adminCode: formData.adminCode,
+          role: 'admin'
+        });
+
+        if (adminDataResult.success) {
+          Alert.alert('Success', 'Registration successful!', [
+            { text: 'OK', onPress: () => router.replace('/role/admin-login') }
+          ]);
+        } else {
+          Alert.alert('Error', 'Failed to save admin data');
+        }
+      } else {
+        Alert.alert('Error', authResult.error);
+      }
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Registration failed');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.contentContainer}>
@@ -39,6 +119,8 @@ export default function AdminRegister() {
             placeholder="Enter your name"
             placeholderTextColor="#94a3b8"
             autoCapitalize="words"
+            value={formData.name}
+            onChangeText={(value) => handleInputChange('name', value)}
           />
           {/* Email Input */}
           <Text style={styles.label}>Email</Text>
@@ -48,6 +130,8 @@ export default function AdminRegister() {
             placeholderTextColor="#94a3b8"
             keyboardType="email-address"
             autoCapitalize="none"
+            value={formData.email}
+            onChangeText={(value) => handleInputChange('email', value)}
           />
           {/* Admin Code Input */}
           <Text style={styles.label}>Admin Code</Text>
@@ -56,6 +140,8 @@ export default function AdminRegister() {
             placeholder="Enter admin code"
             placeholderTextColor="#94a3b8"
             autoCapitalize="none"
+            value={formData.adminCode}
+            onChangeText={(value) => handleInputChange('adminCode', value)}
           />
           {/* Password Input */}
           <Text style={styles.label}>Password</Text>
@@ -65,6 +151,8 @@ export default function AdminRegister() {
               placeholder="Enter your password"
               placeholderTextColor="#94a3b8"
               secureTextEntry={!showPassword}
+              value={formData.password}
+              onChangeText={(value) => handleInputChange('password', value)}
             />
             <TouchableOpacity onPress={() => setShowPassword(!showPassword)} style={styles.eyeButton}>
               <Text style={{ color: "#94a3b8", fontSize: 16 }}>
@@ -80,6 +168,8 @@ export default function AdminRegister() {
               placeholder="Confirm your password"
               placeholderTextColor="#94a3b8"
               secureTextEntry={!showConfirmPassword}
+              value={formData.confirmPassword}
+              onChangeText={(value) => handleInputChange('confirmPassword', value)}
             />
             <TouchableOpacity onPress={() => setShowConfirmPassword(!showConfirmPassword)} style={styles.eyeButton}>
               <Text style={{ color: "#94a3b8", fontSize: 16 }}>
@@ -88,8 +178,14 @@ export default function AdminRegister() {
             </TouchableOpacity>
           </View>
           {/* Register Button */}
-          <TouchableOpacity style={styles.registerButtonMain}>
-            <Text style={styles.registerButtonTextMain}>Register</Text>
+          <TouchableOpacity 
+            style={[styles.registerButtonMain, loading && styles.registerButtonDisabled]}
+            onPress={handleRegister}
+            disabled={loading}
+          >
+            <Text style={styles.registerButtonTextMain}>
+              {loading ? 'Registering...' : 'Register'}
+            </Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -141,6 +237,9 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     alignItems: "center",
     marginTop: 16,
+  },
+  registerButtonDisabled: {
+    backgroundColor: "#6B7280",
   },
   registerButtonTextMain: { color: "#fff", fontSize: 16, fontWeight: "bold" },
 }); 

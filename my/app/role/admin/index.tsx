@@ -1,16 +1,26 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, TextInput, Image, ScrollView, Modal, Animated, Easing, Pressable, Platform, KeyboardAvoidingView } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, TextInput, Image, ScrollView, Modal, Animated, Easing, Pressable, Platform, KeyboardAvoidingView, Alert } from 'react-native';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 import { useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
+import { auth, addNotice, getNotices } from '../../../config/firebase';
 
 // Add explicit types for placeholders
 interface Metric { icon: string; label: string; value: string; }
-interface Notice { text: string; }
+interface Notice { 
+  id?: string;
+  title: string; 
+  content: string;
+  adminId?: string;
+  adminName?: string;
+  priority?: 'low' | 'medium' | 'high';
+  targetAudience?: 'all' | 'teachers' | 'students' | 'parents';
+  createdAt?: any;
+  status?: string;
+}
 interface Event { title: string; date: string; desc: string; }
 
 const metrics: Metric[] = []; // TODO: Inject metrics from API or context
-const notices: Notice[] = []; // TODO: Inject notices from API or context
 const events: Event[] = []; // TODO: Inject events from API or context
 
 const months = [
@@ -31,18 +41,80 @@ const AdminDashboard = () => {
   const [activeTab, setActiveTab] = useState('personal'); // 'personal' or 'account'
   const router = useRouter();
   const [profileImage, setProfileImage] = useState(require('../../../assets/images/icon.png'));
-  // Remove hardcoded state for notices and events
-  // const [notices, setNotices] = useState([...]);
-  // const [events, setEvents] = useState([...]);
-  // Replace with:
-  const [noticesState, setNoticesState] = useState<Notice[]>(notices);
+  // State for notices and events
+  const [noticesState, setNoticesState] = useState<Notice[]>([]);
   const [eventsState, setEventsState] = useState<Event[]>(events);
+  const [loadingNotices, setLoadingNotices] = useState(false);
   const [noticeModalVisible, setNoticeModalVisible] = useState(false);
   const [eventModalVisible, setEventModalVisible] = useState(false);
   const [newNotice, setNewNotice] = useState('');
   const [newEventTitle, setNewEventTitle] = useState('');
   const [newEventDate, setNewEventDate] = useState('');
   const [newEventDesc, setNewEventDesc] = useState('');
+  const [newNoticeTitle, setNewNoticeTitle] = useState('');
+  const [newNoticeContent, setNewNoticeContent] = useState('');
+  const [newNoticePriority, setNewNoticePriority] = useState<'low' | 'medium' | 'high'>('medium');
+  const [newNoticeTargetAudience, setNewNoticeTargetAudience] = useState<'all' | 'teachers' | 'students' | 'parents'>('all');
+
+  // Fetch notices on component mount
+  useEffect(() => {
+    fetchNotices();
+  }, []);
+
+  const fetchNotices = async () => {
+    try {
+      setLoadingNotices(true);
+      const result = await getNotices({ status: 'active' });
+      if (result.success && result.notices) {
+        setNoticesState(result.notices);
+      } else {
+        console.error('Failed to fetch notices:', result.error);
+      }
+    } catch (error) {
+      console.error('Error fetching notices:', error);
+    } finally {
+      setLoadingNotices(false);
+    }
+  };
+
+  const handleAddNotice = async () => {
+    if (!newNoticeTitle.trim() || !newNoticeContent.trim()) {
+      Alert.alert('Error', 'Please fill in all required fields');
+      return;
+    }
+
+    try {
+      const currentUser = auth.currentUser;
+      if (!currentUser) {
+        Alert.alert('Error', 'User not authenticated');
+        return;
+      }
+
+      const noticeData = {
+        title: newNoticeTitle.trim(),
+        content: newNoticeContent.trim(),
+        adminId: currentUser.uid,
+        adminName: 'Admin', // You can get this from user data
+        priority: newNoticePriority,
+        targetAudience: newNoticeTargetAudience
+      };
+
+      const result = await addNotice(noticeData);
+      if (result.success) {
+        Alert.alert('Success', 'Notice added successfully');
+        setNewNoticeTitle('');
+        setNewNoticeContent('');
+        setNewNoticePriority('medium');
+        setNewNoticeTargetAudience('all');
+        setNoticeModalVisible(false);
+        fetchNotices(); // Refresh the notices list
+      } else {
+        Alert.alert('Error', result.error || 'Failed to add notice');
+      }
+    } catch (error: any) {
+      Alert.alert('Error', error.message || 'Failed to add notice');
+    }
+  };
 
   const openProfile = () => {
     setProfileVisible(true);
@@ -358,25 +430,71 @@ const AdminDashboard = () => {
             <Text style={styles.modalTitle}>Add Notice</Text>
             <TextInput
               style={styles.modalInput}
-              placeholder="Enter notice details"
+              placeholder="Notice Title"
               placeholderTextColor="#B3B3B3"
-              value={newNotice}
-              onChangeText={setNewNotice}
+              value={newNoticeTitle}
+              onChangeText={setNewNoticeTitle}
+            />
+            <TextInput
+              style={[styles.modalInput, { height: 80 }]}
+              placeholder="Notice Content"
+              placeholderTextColor="#B3B3B3"
+              value={newNoticeContent}
+              onChangeText={setNewNoticeContent}
               multiline
             />
+            
+            {/* Priority Selection */}
+            <Text style={styles.modalLabel}>Priority:</Text>
+            <View style={styles.modalOptionRow}>
+              {(['low', 'medium', 'high'] as const).map((priority) => (
+                <TouchableOpacity
+                  key={priority}
+                  style={[
+                    styles.modalOptionBtn,
+                    newNoticePriority === priority && { backgroundColor: '#A259FF' }
+                  ]}
+                  onPress={() => setNewNoticePriority(priority)}
+                >
+                  <Text style={[
+                    styles.modalOptionText,
+                    newNoticePriority === priority && { color: '#fff' }
+                  ]}>
+                    {priority.charAt(0).toUpperCase() + priority.slice(1)}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {/* Target Audience Selection */}
+            <Text style={styles.modalLabel}>Target Audience:</Text>
+            <View style={styles.modalOptionRow}>
+              {(['all', 'teachers', 'students', 'parents'] as const).map((audience) => (
+                <TouchableOpacity
+                  key={audience}
+                  style={[
+                    styles.modalOptionBtn,
+                    newNoticeTargetAudience === audience && { backgroundColor: '#A259FF' }
+                  ]}
+                  onPress={() => setNewNoticeTargetAudience(audience)}
+                >
+                  <Text style={[
+                    styles.modalOptionText,
+                    newNoticeTargetAudience === audience && { color: '#fff' }
+                  ]}>
+                    {audience.charAt(0).toUpperCase() + audience.slice(1)}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
             <View style={styles.modalBtnRow}>
               <TouchableOpacity style={styles.modalBtn} onPress={() => setNoticeModalVisible(false)}>
                 <Text style={styles.modalBtnText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity
                 style={[styles.modalBtn, { backgroundColor: '#A259FF' }]}
-                onPress={() => {
-                  if (newNotice.trim()) {
-                    setNoticesState([{ text: newNotice.trim() }, ...noticesState]);
-                    setNewNotice('');
-                    setNoticeModalVisible(false);
-                  }
-                }}
+                onPress={handleAddNotice}
               >
                 <Text style={[styles.modalBtnText, { color: '#fff' }]}>Save</Text>
               </TouchableOpacity>
@@ -442,12 +560,19 @@ const AdminDashboard = () => {
       {/* Notice Board */}
       <Text style={styles.sectionHeading}>Notice Board</Text>
       <View style={styles.noticeBoard}>
-        {noticesState.length === 0 ? <Text style={{color:'#fff'}}>No notices available.</Text> : noticesState.map((notice, idx) => (
-          <View key={idx} style={styles.noticeItem}>
-            <Text style={styles.noticeText}>{`Notice ${idx + 1}. ${notice.text}`}</Text>
-            <FontAwesome name="chevron-right" size={18} color="#A0A0A0" />
-          </View>
-        ))}
+        {loadingNotices ? (
+          <Text style={{color:'#fff'}}>Loading notices...</Text>
+        ) : noticesState.length === 0 ? (
+          <Text style={{color:'#fff'}}>No notices available.</Text>
+        ) : (
+          noticesState.map((notice, idx) => (
+            <View key={notice.id || idx} style={styles.noticeItem}>
+              <Text style={styles.noticeText}>{`${notice.title}`}</Text>
+              <Text style={[styles.noticeText, { fontSize: 12, color: '#A0A0A0' }]}>{notice.content}</Text>
+              <FontAwesome name="chevron-right" size={18} color="#A0A0A0" />
+            </View>
+          ))
+        )}
       </View>
 
       {/* Event Calendar */}
@@ -1013,6 +1138,34 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  modalLabel: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 8,
+    marginTop: 4,
+  },
+  modalOptionRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginBottom: 16,
+    gap: 8,
+  },
+  modalOptionBtn: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+    backgroundColor: '#353945',
+    borderWidth: 1,
+    borderColor: '#333',
+    minWidth: 60,
+    alignItems: 'center',
+  },
+  modalOptionText: {
+    color: '#B0B0B0',
+    fontSize: 12,
+    fontWeight: '500',
   },
 });
 

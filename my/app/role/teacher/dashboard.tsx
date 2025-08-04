@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -12,19 +12,16 @@ import {
   Image,
   Modal,
   Animated,
-  Pressable
+  Pressable,
+  AppState
 } from 'react-native';
 import { Easing } from 'react-native';
 import {
-  Search,
-  Users,
-  Calendar as CalendarIcon,
-  BarChart2,
-  Mail,
-  UserCheck
+  Calendar as CalendarIcon
 } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
+import { auth, getStudents, getClasses, submitAttendance, addClass, getNotices } from '../../../config/firebase';
 // [REMOVE] import { useTheme } from '../../../context/ThemeContext';
 // Removed Picker import - will use TouchableOpacity dropdown instead
 
@@ -42,16 +39,14 @@ const darkTheme = {
   gray: '#7B7B7B',
 };
 
-interface GroupChat { name: string; }
-const groupChats: GroupChat[] = []; // TODO: Inject group chats from API or context
+
 const months = [
   'January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December'
 ];
 const weekDays = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 
-interface UpcomingClass { date: string; subject: string; time: string; class: string; }
-const upcomingClasses: UpcomingClass[] = []; // TODO: Inject upcoming classes from API or context
+
 
 export default function DashboardScreen() {
   // [REMOVE] const { theme, toggleTheme } = useTheme();
@@ -66,9 +61,74 @@ export default function DashboardScreen() {
   const [opacityAnim] = useState(new Animated.Value(0));
   const [activeTab, setActiveTab] = useState('personal'); // 'personal' or 'account'
   const [attendanceModalVisible, setAttendanceModalVisible] = useState(false);
-  const [selectedClass, setSelectedClass] = useState('10th A Class Group');
-  const [attendanceData, setAttendanceData] = useState<{[key: number]: string}>({});
+  const [selectedClass, setSelectedClass] = useState('');
+  const [selectedClassId, setSelectedClassId] = useState('');
+  const [attendanceData, setAttendanceData] = useState<{[key: string]: string}>({});
+  const [students, setStudents] = useState<any[]>([]);
+  const [classes, setClasses] = useState<any[]>([]);
+  const [loadingStudents, setLoadingStudents] = useState(false);
+  const [loadingClasses, setLoadingClasses] = useState(false);
+  const [classDropdownVisible, setClassDropdownVisible] = useState(false);
+  const [mainClassDropdownVisible, setMainClassDropdownVisible] = useState(false);
+  const [addClassModalVisible, setAddClassModalVisible] = useState(false);
+  const [newClassName, setNewClassName] = useState('');
+  const [newClassSubject, setNewClassSubject] = useState('');
+  const [newClassSchedule, setNewClassSchedule] = useState('');
+  const [newClassRoom, setNewClassRoom] = useState('');
+  const [addingClass, setAddingClass] = useState(false);
+  const [notices, setNotices] = useState<Notice[]>([]);
+  const [loadingNotices, setLoadingNotices] = useState(false);
   const router = useRouter();
+
+  // Fetch notices on component mount
+  useEffect(() => {
+    fetchNotices();
+  }, []);
+
+  const fetchNotices = async () => {
+    try {
+      setLoadingNotices(true);
+      // Fetch notices for teachers specifically AND notices for all audiences
+      const teachersResult = await getNotices({ 
+        status: 'active',
+        targetAudience: 'teachers'
+      });
+      
+      const allResult = await getNotices({ 
+        status: 'active',
+        targetAudience: 'all'
+      });
+      
+      if (teachersResult.success && allResult.success) {
+        // Combine and deduplicate notices
+        const allNotices = [...(teachersResult.notices || []), ...(allResult.notices || [])];
+        const uniqueNotices = allNotices.filter((notice, index, self) => 
+          index === self.findIndex(n => n.id === notice.id)
+        );
+        setNotices(uniqueNotices);
+        console.log('Fetched notices:', uniqueNotices.length, 'notices');
+      } else {
+        console.error('Failed to fetch notices:', teachersResult.error || allResult.error);
+      }
+    } catch (error) {
+      console.error('Error fetching notices:', error);
+    } finally {
+      setLoadingNotices(false);
+    }
+  };
+
+  // Notice interface
+  interface Notice {
+    id?: string;
+    title: string;
+    content: string;
+    adminId?: string;
+    adminName?: string;
+    priority?: 'low' | 'medium' | 'high';
+    targetAudience?: 'all' | 'teachers' | 'students' | 'parents';
+    createdAt?: any;
+    status?: string;
+  }
 
   // Example teacher details with expanded information
   interface TeacherDetails {
@@ -92,41 +152,161 @@ export default function DashboardScreen() {
   }
   const teacherDetails: TeacherDetails = {}; // TODO: Inject teacher details from API or context
 
-  // Mock student data for attendance
-  const students = [
-    { id: 1, name: 'Aarav Patel', rollNo: '001', status: 'present' },
-    { id: 2, name: 'Priya Sharma', rollNo: '002', status: 'present' },
-    { id: 3, name: 'Rahul Singh', rollNo: '003', status: 'absent' },
-    { id: 4, name: 'Ananya Gupta', rollNo: '004', status: 'present' },
-    { id: 5, name: 'Vikram Mehta', rollNo: '005', status: 'late' },
-    { id: 6, name: 'Zara Khan', rollNo: '006', status: 'present' },
-    { id: 7, name: 'Aditya Verma', rollNo: '007', status: 'present' },
-    { id: 8, name: 'Ishita Reddy', rollNo: '008', status: 'absent' },
-  ];
+  // Fetch classes for the teacher
+  const fetchClasses = async () => {
+    try {
+      setLoadingClasses(true);
+      const currentUser = auth.currentUser;
+      if (!currentUser) {
+        console.error('No authenticated user found');
+        return;
+      }
+
+      console.log('Fetching classes for teacher ID:', currentUser.uid);
+      const result = await getClasses(currentUser.uid);
+      console.log('Classes fetch result:', result);
+      
+      if (result.success) {
+        setClasses(result.classes || []);
+        console.log('Classes set:', result.classes);
+        if (result.classes && result.classes.length > 0) {
+          setSelectedClass(result.classes[0].name);
+          setSelectedClassId(result.classes[0].id);
+          console.log('Selected first class:', result.classes[0]);
+        } else {
+          console.log('No classes found for this teacher');
+        }
+      } else {
+        console.error('Failed to fetch classes:', result.error);
+      }
+    } catch (error) {
+      console.error('Error fetching classes:', error);
+    } finally {
+      setLoadingClasses(false);
+    }
+  };
+
+  // Close dropdowns when clicking outside
+  useEffect(() => {
+    const handleClickOutside = () => {
+      setMainClassDropdownVisible(false);
+      setClassDropdownVisible(false);
+    };
+
+    // Add event listener for clicks outside
+    const subscription = AppState.addEventListener('change', handleClickOutside);
+    return () => subscription?.remove();
+  }, []);
+
+  // Close main dropdown when class changes
+  useEffect(() => {
+    setMainClassDropdownVisible(false);
+  }, [selectedClassId]);
+
+  // Fetch students for the selected class
+  const fetchStudents = async (classId: string) => {
+    try {
+      setLoadingStudents(true);
+      const currentUser = auth.currentUser;
+      if (!currentUser) {
+        console.error('No authenticated user found');
+        return;
+      }
+
+      console.log('🔍 Fetching students with filters:', {
+        className: selectedClass,
+        teacherId: currentUser.uid
+      });
+
+      const result = await getStudents({ 
+        className: selectedClass,
+        teacherId: currentUser.uid 
+      });
+      
+      console.log('📊 Students fetch result:', result);
+      
+      if (result.success) {
+        console.log(`✅ Found ${result.students?.length || 0} students`);
+        setStudents(result.students || []);
+        // Initialize attendance data
+        const initialAttendance: {[key: string]: string} = {};
+        result.students?.forEach((student: any) => {
+          initialAttendance[student.id] = 'present'; // Default to present
+        });
+        setAttendanceData(initialAttendance);
+      } else {
+        console.error('❌ Failed to fetch students:', result.error);
+      }
+    } catch (error) {
+      console.error('❌ Error fetching students:', error);
+    } finally {
+      setLoadingStudents(false);
+    }
+  };
+
+  // Load classes when component mounts
+  React.useEffect(() => {
+    fetchClasses();
+  }, []);
+
+  // Load students when class changes
+  React.useEffect(() => {
+    if (selectedClassId) {
+      fetchStudents(selectedClassId);
+    }
+  }, [selectedClassId]);
 
   // Attendance functions
   const handleTakeAttendance = () => {
+    if (!selectedClassId) {
+      alert('Please select a class first');
+      return;
+    }
     setAttendanceModalVisible(true);
-    // Initialize attendance data with current status
-    const initialAttendance: {[key: number]: string} = {};
-    students.forEach(student => {
-      initialAttendance[student.id] = student.status;
-    });
-    setAttendanceData(initialAttendance);
   };
 
-  const handleAttendanceChange = (studentId: number, status: string) => {
+  const handleAttendanceChange = (studentId: string, status: string) => {
     setAttendanceData(prev => ({
       ...prev,
       [studentId]: status
     }));
   };
 
-  const handleSubmitAttendance = () => {
-    // Here you would typically send the attendance data to your backend
-    console.log('Attendance submitted:', attendanceData);
-    alert('Attendance submitted successfully!');
-    setAttendanceModalVisible(false);
+  const handleSubmitAttendance = async () => {
+    try {
+      const currentUser = auth.currentUser;
+      if (!currentUser) {
+        alert('No authenticated user found');
+        return;
+      }
+
+      const attendanceStudents = students.map(student => ({
+        studentId: student.id,
+        studentName: student.name || student.fullName,
+        rollNo: student.rollNo || student.rollNumber,
+        status: (attendanceData[student.id] || 'present') as 'present' | 'absent' | 'late'
+      }));
+
+      const attendanceDataToSubmit = {
+        classId: selectedClassId,
+        className: selectedClass,
+        date: new Date().toISOString().split('T')[0], // YYYY-MM-DD format
+        teacherId: currentUser.uid,
+        teacherName: teacherDetails.name || 'Unknown Teacher',
+        students: attendanceStudents
+      };
+
+      const result = await submitAttendance(attendanceDataToSubmit);
+      if (result.success) {
+        alert('Attendance submitted successfully!');
+        setAttendanceModalVisible(false);
+      } else {
+        alert('Failed to submit attendance: ' + result.error);
+      }
+    } catch (error) {
+      console.error('Error submitting attendance:', error);
+      alert('Error submitting attendance. Please try again.');
+    }
   };
 
   // Marks modal state
@@ -147,6 +327,57 @@ export default function DashboardScreen() {
     // TODO: Send marks to backend
     setMarksModalVisible(false);
     alert('Marks submitted!');
+  };
+
+  const handleAddClass = async () => {
+    try {
+      setAddingClass(true);
+      const currentUser = auth.currentUser;
+      if (!currentUser) {
+        alert('No authenticated user found');
+        return;
+      }
+
+      if (!newClassName.trim() || !newClassSubject.trim()) {
+        alert('Please fill in class name and subject');
+        return;
+      }
+
+                      const classData: any = {
+                  name: newClassName.trim(),
+                  subject: newClassSubject.trim(),
+                  teacherId: currentUser.uid,
+                  teacherName: teacherDetails.name || 'Unknown Teacher',
+                };
+
+                // Only add optional fields if they have values
+                if (newClassSchedule.trim()) {
+                  classData.schedule = newClassSchedule.trim();
+                }
+                if (newClassRoom.trim()) {
+                  classData.room = newClassRoom.trim();
+                }
+
+      const result = await addClass(classData);
+      if (result.success) {
+        alert('Class added successfully!');
+        setAddClassModalVisible(false);
+        // Reset form
+        setNewClassName('');
+        setNewClassSubject('');
+        setNewClassSchedule('');
+        setNewClassRoom('');
+        // Refresh classes list
+        fetchClasses();
+      } else {
+        alert('Failed to add class: ' + result.error);
+      }
+    } catch (error) {
+      console.error('Error adding class:', error);
+      alert('Error adding class. Please try again.');
+    } finally {
+      setAddingClass(false);
+    }
   };
 
   const getDaysInMonth = (month: number, year: number) => {
@@ -256,6 +487,72 @@ export default function DashboardScreen() {
             <Text style={styles.teacherTitle}>{teacherDetails.role || 'Loading...'}</Text>
           </View>
         </View>
+
+        {/* Main Class Selector */}
+        <View style={styles.mainClassSelector}>
+          <Text style={styles.mainClassSelectorLabel}>Current Class:</Text>
+          <TouchableOpacity 
+            style={styles.mainClassSelectorBtn}
+            onPress={() => setMainClassDropdownVisible(!mainClassDropdownVisible)}
+          >
+            <Text style={styles.mainClassSelectorText}>
+              {loadingClasses ? 'Loading classes...' : selectedClass || 'Select Class'}
+            </Text>
+            <FontAwesome name="chevron-down" size={16} color="#B0B0B0" />
+          </TouchableOpacity>
+          
+                        {/* Main Class Dropdown */}
+              {mainClassDropdownVisible && (
+                <Pressable 
+                  style={styles.dropdownOverlay} 
+                  onPress={() => setMainClassDropdownVisible(false)}
+                >
+                  <View style={styles.mainClassDropdown}>
+                    <ScrollView style={styles.mainClassDropdownList} showsVerticalScrollIndicator={false}>
+                      {classes.length === 0 ? (
+                        <View style={styles.emptyDropdownItem}>
+                          <Text style={styles.emptyDropdownText}>No classes available</Text>
+                        </View>
+                      ) : (
+                        classes.map((classItem) => (
+                          <TouchableOpacity
+                            key={classItem.id}
+                            style={[
+                              styles.mainClassDropdownItem,
+                              selectedClassId === classItem.id && styles.mainClassDropdownItemSelected
+                            ]}
+                            onPress={() => {
+                              setSelectedClass(classItem.name);
+                              setSelectedClassId(classItem.id);
+                              setMainClassDropdownVisible(false);
+                            }}
+                          >
+                            <Text style={[
+                              styles.mainClassDropdownItemText,
+                              selectedClassId === classItem.id && styles.mainClassDropdownItemTextSelected
+                            ]}>
+                              {classItem.name}
+                            </Text>
+                            {selectedClassId === classItem.id && (
+                              <FontAwesome name="check" size={14} color="#4ADE80" />
+                            )}
+                          </TouchableOpacity>
+                        ))
+                      )}
+                    </ScrollView>
+                  </View>
+                </Pressable>
+              )}
+        </View>
+
+        {/* Add Class Button */}
+        <TouchableOpacity 
+          style={styles.addClassButton}
+          onPress={() => setAddClassModalVisible(true)}
+        >
+          <FontAwesome name="plus" size={16} color="#FFFFFF" />
+          <Text style={styles.addClassButtonText}>Add New Class</Text>
+        </TouchableOpacity>
         {/* Profile Modal */}
         <Modal
           visible={profileVisible}
@@ -416,62 +713,120 @@ export default function DashboardScreen() {
                 </TouchableOpacity>
               </View>
               
-              <View style={styles.classSelector}>
-                <Text style={styles.classSelectorLabel}>Select Class:</Text>
-                <TouchableOpacity style={styles.classSelectorBtn}>
-                  <Text style={styles.classSelectorText}>{selectedClass}</Text>
-                  <FontAwesome name="chevron-down" size={16} color="#B0B0B0" />
-                </TouchableOpacity>
-              </View>
+                                                          <View style={styles.classSelector}>
+                 <Text style={styles.classSelectorLabel}>Select Class:</Text>
+                 <TouchableOpacity 
+                   style={styles.classSelectorBtn}
+                   onPress={() => setClassDropdownVisible(!classDropdownVisible)}
+                 >
+                   <Text style={styles.classSelectorText}>
+                     {loadingClasses ? 'Loading classes...' : selectedClass || 'Select Class'}
+                   </Text>
+                   <FontAwesome name="chevron-down" size={16} color="#B0B0B0" />
+                 </TouchableOpacity>
+                 
+                 {/* Class Dropdown */}
+                 {classDropdownVisible && (
+                   <Pressable 
+                     style={styles.dropdownOverlay} 
+                     onPress={() => setClassDropdownVisible(false)}
+                   >
+                     <View style={styles.classDropdown}>
+                       <ScrollView style={styles.classDropdownList} showsVerticalScrollIndicator={false}>
+                         {classes.length === 0 ? (
+                           <View style={styles.emptyDropdownItem}>
+                             <Text style={styles.emptyDropdownText}>No classes available</Text>
+                           </View>
+                         ) : (
+                           classes.map((classItem) => (
+                             <TouchableOpacity
+                               key={classItem.id}
+                               style={[
+                                 styles.classDropdownItem,
+                                 selectedClassId === classItem.id && styles.classDropdownItemSelected
+                               ]}
+                               onPress={() => {
+                                 setSelectedClass(classItem.name);
+                                 setSelectedClassId(classItem.id);
+                                 setClassDropdownVisible(false);
+                               }}
+                             >
+                               <Text style={[
+                                 styles.classDropdownItemText,
+                                 selectedClassId === classItem.id && styles.classDropdownItemTextSelected
+                               ]}>
+                                 {classItem.name}
+                               </Text>
+                               {selectedClassId === classItem.id && (
+                                 <FontAwesome name="check" size={14} color="#4ADE80" />
+                               )}
+                             </TouchableOpacity>
+                           ))
+                         )}
+                       </ScrollView>
+                     </View>
+                   </Pressable>
+                 )}
+               </View>
 
-              <ScrollView style={styles.studentsList} showsVerticalScrollIndicator={false}>
-                {students.map((student) => (
-                  <View key={student.id} style={styles.studentRow}>
-                    <View style={styles.studentInfo}>
-                      <Text style={styles.studentName}>{student.name}</Text>
-                      <Text style={styles.studentRollNo}>Roll No: {student.rollNo}</Text>
-                    </View>
-                    <View style={styles.attendanceButtons}>
-                      <TouchableOpacity
-                        style={[
-                          styles.attendanceBtn,
-                          attendanceData[student.id] === 'present' && styles.attendanceBtnActive
-                        ]}
-                        onPress={() => handleAttendanceChange(student.id, 'present')}
-                      >
-                        <Text style={[
-                          styles.attendanceBtnText,
-                          attendanceData[student.id] === 'present' && styles.attendanceBtnTextActive
-                        ]}>Present</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={[
-                          styles.attendanceBtn,
-                          attendanceData[student.id] === 'absent' && styles.attendanceBtnActive
-                        ]}
-                        onPress={() => handleAttendanceChange(student.id, 'absent')}
-                      >
-                        <Text style={[
-                          styles.attendanceBtnText,
-                          attendanceData[student.id] === 'absent' && styles.attendanceBtnTextActive
-                        ]}>Absent</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity
-                        style={[
-                          styles.attendanceBtn,
-                          attendanceData[student.id] === 'late' && styles.attendanceBtnActive
-                        ]}
-                        onPress={() => handleAttendanceChange(student.id, 'late')}
-                      >
-                        <Text style={[
-                          styles.attendanceBtnText,
-                          attendanceData[student.id] === 'late' && styles.attendanceBtnTextActive
-                        ]}>Late</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                ))}
-              </ScrollView>
+                             <ScrollView style={styles.studentsList} showsVerticalScrollIndicator={false}>
+                 {loadingStudents ? (
+                   <View style={styles.loadingContainer}>
+                     <Text style={styles.loadingText}>Loading students...</Text>
+                   </View>
+                 ) : students.length === 0 ? (
+                   <View style={styles.emptyContainer}>
+                     <Text style={styles.emptyText}>No students found in this class.</Text>
+                   </View>
+                 ) : (
+                   students.map((student) => (
+                     <View key={student.id} style={styles.studentRow}>
+                       <View style={styles.studentInfo}>
+                         <Text style={styles.studentName}>{student.name || student.fullName}</Text>
+                         <Text style={styles.studentRollNo}>Roll No: {student.rollNo || student.rollNumber}</Text>
+                       </View>
+                       <View style={styles.attendanceButtons}>
+                         <TouchableOpacity
+                           style={[
+                             styles.attendanceBtn,
+                             attendanceData[student.id] === 'present' && styles.attendanceBtnActive
+                           ]}
+                           onPress={() => handleAttendanceChange(student.id, 'present')}
+                         >
+                           <Text style={[
+                             styles.attendanceBtnText,
+                             attendanceData[student.id] === 'present' && styles.attendanceBtnTextActive
+                           ]}>Present</Text>
+                         </TouchableOpacity>
+                         <TouchableOpacity
+                           style={[
+                             styles.attendanceBtn,
+                             attendanceData[student.id] === 'absent' && styles.attendanceBtnActive
+                           ]}
+                           onPress={() => handleAttendanceChange(student.id, 'absent')}
+                         >
+                           <Text style={[
+                             styles.attendanceBtnText,
+                             attendanceData[student.id] === 'absent' && styles.attendanceBtnTextActive
+                           ]}>Absent</Text>
+                         </TouchableOpacity>
+                         <TouchableOpacity
+                           style={[
+                             styles.attendanceBtn,
+                             attendanceData[student.id] === 'late' && styles.attendanceBtnActive
+                           ]}
+                           onPress={() => handleAttendanceChange(student.id, 'late')}
+                         >
+                           <Text style={[
+                             styles.attendanceBtnText,
+                             attendanceData[student.id] === 'late' && styles.attendanceBtnTextActive
+                           ]}>Late</Text>
+                         </TouchableOpacity>
+                       </View>
+                     </View>
+                   ))
+                 )}
+               </ScrollView>
 
               <View style={styles.attendanceModalFooter}>
                 <TouchableOpacity
@@ -521,24 +876,34 @@ export default function DashboardScreen() {
                   <FontAwesome name="chevron-down" size={16} color="#B0B0B0" />
                 </TouchableOpacity>
               </View>
-              <ScrollView style={styles.studentsList} showsVerticalScrollIndicator={false}>
-                {students.map(student => (
-                  <View key={student.id} style={styles.studentRow}>
-                    <View style={styles.studentInfo}>
-                      <Text style={styles.studentName}>{student.name}</Text>
-                      <Text style={styles.studentRollNo}>Roll No: {student.rollNo}</Text>
-                    </View>
-                    <TextInput
-                      style={styles.marksInput}
-                      placeholder="Marks"
-                      placeholderTextColor="#A0A0A0"
-                      keyboardType="numeric"
-                      value={marks[student.id] || ''}
-                      onChangeText={value => handleSetMark(student.id, value)}
-                    />
-                  </View>
-                ))}
-              </ScrollView>
+                             <ScrollView style={styles.studentsList} showsVerticalScrollIndicator={false}>
+                 {loadingStudents ? (
+                   <View style={styles.loadingContainer}>
+                     <Text style={styles.loadingText}>Loading students...</Text>
+                   </View>
+                 ) : students.length === 0 ? (
+                   <View style={styles.emptyContainer}>
+                     <Text style={styles.emptyText}>No students found in this class.</Text>
+                   </View>
+                 ) : (
+                   students.map(student => (
+                     <View key={student.id} style={styles.studentRow}>
+                       <View style={styles.studentInfo}>
+                         <Text style={styles.studentName}>{student.name || student.fullName}</Text>
+                         <Text style={styles.studentRollNo}>Roll No: {student.rollNo || student.rollNumber}</Text>
+                       </View>
+                       <TextInput
+                         style={styles.marksInput}
+                         placeholder="Marks"
+                         placeholderTextColor="#A0A0A0"
+                         keyboardType="numeric"
+                         value={marks[student.id] || ''}
+                         onChangeText={value => handleSetMark(student.id, value)}
+                       />
+                     </View>
+                   ))
+                 )}
+               </ScrollView>
               <View style={styles.attendanceModalFooter}>
                 <TouchableOpacity
                   style={styles.cancelBtn}
@@ -557,96 +922,181 @@ export default function DashboardScreen() {
           </View>
         </Modal>
 
-        {/* Search Bar */}
-        <View style={styles.searchBar}>
-          <Search size={18} color={darkTheme.text} />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search..."
-            placeholderTextColor={darkTheme.textSecondary}
-          />
-        </View>
-        {/* Group Communication */}
-        <Text style={styles.sectionHeading}>Group Chat</Text>
-        <View style={styles.groupChatSection}>
-          {groupChats.length === 0 ? (
-            <View style={styles.groupChatCard}>
-              <Text style={styles.groupChatName}>No group chats available.</Text>
-            </View>
-          ) : (
-            groupChats.map((group, idx) => (
-              <View key={idx} style={styles.groupChatCard}>
-                <Users size={22} color={darkTheme.accent} />
-                <Text style={styles.groupChatName}>{group.name}</Text>
+        {/* Add Class Modal */}
+        <Modal
+          visible={addClassModalVisible}
+          animationType="slide"
+          transparent={true}
+          onRequestClose={() => setAddClassModalVisible(false)}
+        >
+          <View style={styles.attendanceModalOverlay}>
+            <View style={styles.attendanceModalContent}>
+              <View style={styles.attendanceModalHeader}>
+                <Text style={styles.attendanceModalTitle}>Add New Class</Text>
+                <TouchableOpacity onPress={() => setAddClassModalVisible(false)}>
+                  <FontAwesome name="times" size={20} color="#B0B0B0" />
+                </TouchableOpacity>
               </View>
-            ))
-          )}
-          <View style={styles.groupActionsRow}>
-            <TouchableOpacity style={styles.groupActionBtn} onPress={handleTakeAttendance}>
-              <UserCheck size={16} color="#fff" />
-              <Text style={styles.groupActionText}>Take Attendance</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.groupActionBtn} onPress={handleOpenMarksModal}>
-              <FontAwesome name="pencil" size={16} color="#fff" />
-              <Text style={styles.groupActionText}>Marks</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.groupActionBtn}>
-              <Mail size={16} color="#fff" />
-              <Text style={styles.groupActionText}>Send Mail to Parents</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-        {/* Calendar Widget */}
-        <Text style={styles.sectionHeading}>Event Calendar</Text>
-        <View style={styles.calendarCard}>
-          <View style={styles.calendarHeader}>
-            <TouchableOpacity onPress={() => navigateMonth('prev')}>
-              <Text style={styles.calendarNav}>{'<'}</Text>
-            </TouchableOpacity>
-            <Text style={styles.calendarMonth}>{months[currentMonth]} {currentYear}</Text>
-            <TouchableOpacity onPress={() => navigateMonth('next')}>
-              <Text style={styles.calendarNav}>{'>'}</Text>
-            </TouchableOpacity>
-          </View>
-          <View style={styles.weekHeader}>
-            {weekDays.map((d, i) => (
-              <Text key={`${d}-${i}`} style={styles.weekDay}>{d}</Text>
-            ))}
-          </View>
-          <View style={styles.calendarGrid}>{renderCalendar()}</View>
-        </View>
-        {/* Progress Tracking */}
-        <Text style={styles.sectionHeading}>Student Progress</Text>
-        <View style={styles.progressCard}>
-          <View style={styles.progressHeader}>
-            <BarChart2 size={22} color={darkTheme.accent} />
-            <Text style={styles.progressTitle}>Analytics Overview</Text>
-          </View>
-          {/* Placeholder for chart/graph */}
-          <View style={styles.chartPlaceholder}>
-            <Text style={styles.chartPlaceholderText}>[Chart/Graph Placeholder]</Text>
-          </View>
-        </View>
-        {/* Schedule Section */}
-        <Text style={styles.sectionHeading}>Upcoming Classes</Text>
-        <View style={styles.scheduleCard}>
-          {upcomingClasses.length === 0 ? (
-            <View style={styles.classItem}>
-              <Text style={styles.classSubject}>No upcoming classes.</Text>
-            </View>
-          ) : (
-            upcomingClasses.map((cls, idx) => (
-              <View key={idx} style={styles.classItem}>
-                <CalendarIcon size={18} color={darkTheme.accent} style={{ marginRight: 8 }} />
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.classSubject}>{cls.subject}</Text>
-                  <Text style={styles.classInfo}>{cls.class} | {cls.time}</Text>
-                  <Text style={styles.classDate}>{cls.date}</Text>
+              
+              <View style={styles.addClassForm}>
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>Class Name *</Text>
+                  <TextInput
+                    style={styles.textInput}
+                    placeholder="e.g., Class 10A, Grade 9B"
+                    placeholderTextColor="#A0A0A0"
+                    value={newClassName}
+                    onChangeText={setNewClassName}
+                  />
+                </View>
+                
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>Subject *</Text>
+                  <TextInput
+                    style={styles.textInput}
+                    placeholder="e.g., Mathematics, Science, English"
+                    placeholderTextColor="#A0A0A0"
+                    value={newClassSubject}
+                    onChangeText={setNewClassSubject}
+                  />
+                </View>
+                
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>Schedule (Optional)</Text>
+                  <TextInput
+                    style={styles.textInput}
+                    placeholder="e.g., Monday, Wednesday, Friday - 9:00 AM"
+                    placeholderTextColor="#A0A0A0"
+                    value={newClassSchedule}
+                    onChangeText={setNewClassSchedule}
+                  />
+                </View>
+                
+                <View style={styles.inputGroup}>
+                  <Text style={styles.inputLabel}>Room (Optional)</Text>
+                  <TextInput
+                    style={styles.textInput}
+                    placeholder="e.g., Room 101, Lab 2"
+                    placeholderTextColor="#A0A0A0"
+                    value={newClassRoom}
+                    onChangeText={setNewClassRoom}
+                  />
                 </View>
               </View>
-            ))
-          )}
+              
+              <View style={styles.attendanceModalFooter}>
+                <TouchableOpacity
+                  style={styles.cancelBtn}
+                  onPress={() => setAddClassModalVisible(false)}
+                >
+                  <Text style={styles.cancelBtnText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.submitBtn, addingClass && styles.submitBtnDisabled]}
+                  onPress={handleAddClass}
+                  disabled={addingClass}
+                >
+                  <Text style={styles.submitBtnText}>
+                    {addingClass ? 'Adding...' : 'Add Class'}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+
+        {/* Group Actions */}
+        <View style={styles.groupActionsRow}>
+          <TouchableOpacity style={styles.groupActionBtn} onPress={handleTakeAttendance}>
+            <FontAwesome name="check-circle" size={16} color="#fff" />
+            <Text style={styles.groupActionText}>Take Attendance</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.groupActionBtn} onPress={handleOpenMarksModal}>
+            <FontAwesome name="pencil" size={16} color="#fff" />
+            <Text style={styles.groupActionText}>Marks</Text>
+          </TouchableOpacity>
         </View>
+
+                 {/* Calendar Widget */}
+         <Text style={styles.sectionHeading}>Event Calendar</Text>
+         <View style={styles.calendarCard}>
+           <View style={styles.calendarHeader}>
+             <TouchableOpacity onPress={() => navigateMonth('prev')}>
+               <Text style={styles.calendarNav}>{'<'}</Text>
+             </TouchableOpacity>
+             <Text style={styles.calendarMonth}>{months[currentMonth]} {currentYear}</Text>
+             <TouchableOpacity onPress={() => navigateMonth('next')}>
+               <Text style={styles.calendarNav}>{'>'}</Text>
+             </TouchableOpacity>
+           </View>
+           <View style={styles.weekHeader}>
+             {weekDays.map((d, i) => (
+               <Text key={`${d}-${i}`} style={styles.weekDay}>{d}</Text>
+             ))}
+           </View>
+           <View style={styles.calendarGrid}>{renderCalendar()}</View>
+         </View>
+
+         {/* Notice Board */}
+         <Text style={styles.sectionHeading}>Notice Board</Text>
+         <View style={styles.noticeBoardCard}>
+           <View style={styles.noticeBoardHeader}>
+             <FontAwesome name="bullhorn" size={20} color={darkTheme.accent} />
+             <Text style={styles.noticeBoardTitle}>Latest Notices</Text>
+           </View>
+           <View style={styles.noticeList}>
+             {loadingNotices ? (
+               <Text style={styles.noticeContent}>Loading notices...</Text>
+             ) : notices.length === 0 ? (
+               <Text style={styles.noticeContent}>No notices available.</Text>
+             ) : (
+               notices.map((notice, index) => {
+                 const priorityColors = {
+                   high: '#FF6B6B',
+                   medium: '#4ECDC4',
+                   low: '#45B7D1'
+                 };
+                 
+                 const priorityText = {
+                   high: 'High Priority',
+                   medium: 'Medium Priority',
+                   low: 'Low Priority'
+                 };
+
+                 const noticeDate = notice.createdAt ? 
+                   new Date(notice.createdAt.toDate()).toLocaleDateString('en-US', { 
+                     month: 'short', 
+                     day: 'numeric', 
+                     year: 'numeric' 
+                   }) : 'Recent';
+
+                 return (
+                   <View key={notice.id || index} style={styles.noticeItem}>
+                     <View style={styles.noticeItemHeader}>
+                       <Text style={styles.noticeTitle}>{notice.title}</Text>
+                       <Text style={styles.noticeDate}>{noticeDate}</Text>
+                     </View>
+                     <Text style={styles.noticeContent}>
+                       {notice.content}
+                     </Text>
+                     <View style={styles.noticePriority}>
+                       <View style={[
+                         styles.priorityBadge, 
+                         { backgroundColor: priorityColors[notice.priority || 'medium'] }
+                       ]}>
+                         <Text style={styles.priorityText}>
+                           {priorityText[notice.priority || 'medium']}
+                         </Text>
+                       </View>
+                     </View>
+                   </View>
+                 );
+               })
+             )}
+           </View>
+         </View>
+
+
       </ScrollView>
     </SafeAreaView>
   );
@@ -679,23 +1129,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginTop: 2,
   },
-  searchBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: darkTheme.purple,
-    marginHorizontal: 20,
-    borderRadius: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    marginBottom: 18,
-    marginTop: 6,
-  },
-  searchInput: {
-    flex: 1,
-    marginLeft: 10,
-    color: darkTheme.text,
-    fontSize: 16,
-  },
+
   sectionHeading: {
     color: darkTheme.text,
     fontSize: 18,
@@ -704,31 +1138,11 @@ const styles = StyleSheet.create({
     marginTop: 18,
     marginBottom: 10,
   },
-  groupChatSection: {
-    backgroundColor: darkTheme.card,
-    borderRadius: 12,
-    marginHorizontal: 20,
-    marginBottom: 10,
-    padding: 14,
-  },
-  groupChatCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: darkTheme.muted,
-    borderRadius: 8,
-    padding: 10,
-    marginBottom: 8,
-  },
-  groupChatName: {
-    color: darkTheme.text,
-    fontSize: 15,
-    marginLeft: 10,
-    fontWeight: '600',
-  },
   groupActionsRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginTop: 10,
+    marginHorizontal: 20,
+    marginBottom: 18,
   },
   groupActionBtn: {
     flexDirection: 'row',
@@ -745,6 +1159,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
     marginLeft: 6,
   },
+
   calendarCard: {
     backgroundColor: darkTheme.card,
     borderRadius: 12,
@@ -817,66 +1232,72 @@ const styles = StyleSheet.create({
     color: darkTheme.accent,
     fontWeight: 'bold',
   },
-  progressCard: {
+  noticeBoardCard: {
     backgroundColor: darkTheme.card,
     borderRadius: 12,
     marginHorizontal: 20,
     marginBottom: 10,
     padding: 16,
   },
-  progressHeader: {
+  noticeBoardHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 8,
+    marginBottom: 16,
   },
-  progressTitle: {
+  noticeBoardTitle: {
     color: darkTheme.text,
     fontWeight: 'bold',
     fontSize: 16,
     marginLeft: 8,
   },
-  chartPlaceholder: {
-    height: 100,
+  noticeList: {
+    gap: 12,
+  },
+  noticeItem: {
     backgroundColor: darkTheme.muted,
     borderRadius: 8,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 8,
+    padding: 12,
+    borderLeftWidth: 4,
+    borderLeftColor: darkTheme.accent,
   },
-  chartPlaceholderText: {
-    color: darkTheme.textSecondary,
-    fontSize: 14,
-  },
-  scheduleCard: {
-    backgroundColor: darkTheme.card,
-    borderRadius: 12,
-    marginHorizontal: 20,
-    marginBottom: 30,
-    padding: 16,
-  },
-  classItem: {
+  noticeItemHeader: {
     flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    backgroundColor: darkTheme.muted,
-    borderRadius: 8,
-    padding: 10,
-    marginBottom: 10,
+    marginBottom: 8,
   },
-  classSubject: {
+  noticeTitle: {
     color: darkTheme.text,
     fontWeight: 'bold',
-    fontSize: 15,
+    fontSize: 14,
+    flex: 1,
   },
-  classInfo: {
+  noticeDate: {
+    color: darkTheme.textSecondary,
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  noticeContent: {
     color: darkTheme.textSecondary,
     fontSize: 13,
-    marginTop: 2,
+    lineHeight: 18,
+    marginBottom: 8,
   },
-  classDate: {
-    color: darkTheme.accent,
-    fontSize: 13,
-    marginTop: 2,
+  noticePriority: {
+    alignItems: 'flex-start',
   },
+  priorityBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  priorityText: {
+    color: '#FFFFFF',
+    fontSize: 10,
+    fontWeight: '600',
+  },
+
+
   profileOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.75)',
@@ -1288,9 +1709,197 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#353945',
   },
-  subjectSelectorText: {
-    color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '500',
-  },
+     subjectSelectorText: {
+     color: '#FFFFFF',
+     fontSize: 16,
+     fontWeight: '500',
+   },
+   loadingContainer: {
+     padding: 20,
+     alignItems: 'center',
+     justifyContent: 'center',
+   },
+   loadingText: {
+     color: '#B0B0B0',
+     fontSize: 16,
+     fontWeight: '500',
+   },
+   emptyContainer: {
+     padding: 20,
+     alignItems: 'center',
+     justifyContent: 'center',
+   },
+   emptyText: {
+     color: '#B0B0B0',
+     fontSize: 16,
+     fontWeight: '500',
+   },
+   // Main Class Selector Styles
+   mainClassSelector: {
+     marginHorizontal: 20,
+     marginBottom: 18,
+   },
+   mainClassSelectorLabel: {
+     color: darkTheme.textSecondary,
+     fontSize: 14,
+     fontWeight: '600',
+     marginBottom: 8,
+   },
+   mainClassSelectorBtn: {
+     flexDirection: 'row',
+     justifyContent: 'space-between',
+     alignItems: 'center',
+     backgroundColor: darkTheme.card,
+     paddingHorizontal: 16,
+     paddingVertical: 12,
+     borderRadius: 10,
+     borderWidth: 1,
+     borderColor: darkTheme.textSecondary,
+   },
+   mainClassSelectorText: {
+     color: darkTheme.text,
+     fontSize: 16,
+     fontWeight: '500',
+   },
+   mainClassDropdown: {
+     position: 'absolute',
+     top: '100%',
+     left: 0,
+     right: 0,
+     backgroundColor: darkTheme.card,
+     borderRadius: 10,
+     borderWidth: 1,
+     borderColor: darkTheme.textSecondary,
+     maxHeight: 200,
+     zIndex: 1000,
+     marginTop: 4,
+   },
+   mainClassDropdownList: {
+     maxHeight: 200,
+   },
+   mainClassDropdownItem: {
+     flexDirection: 'row',
+     justifyContent: 'space-between',
+     alignItems: 'center',
+     paddingHorizontal: 16,
+     paddingVertical: 12,
+     borderBottomWidth: 1,
+     borderBottomColor: darkTheme.textSecondary,
+   },
+   mainClassDropdownItemSelected: {
+     backgroundColor: darkTheme.accent,
+   },
+   mainClassDropdownItemText: {
+     color: darkTheme.text,
+     fontSize: 16,
+     fontWeight: '500',
+   },
+   mainClassDropdownItemTextSelected: {
+     color: '#fff',
+     fontWeight: '600',
+   },
+   // Class Dropdown Styles (for attendance modal)
+   classDropdown: {
+     position: 'absolute',
+     top: '100%',
+     left: 0,
+     right: 0,
+     backgroundColor: darkTheme.card,
+     borderRadius: 10,
+     borderWidth: 1,
+     borderColor: darkTheme.textSecondary,
+     maxHeight: 150,
+     zIndex: 1000,
+     marginTop: 4,
+   },
+   classDropdownList: {
+     maxHeight: 150,
+   },
+   classDropdownItem: {
+     flexDirection: 'row',
+     justifyContent: 'space-between',
+     alignItems: 'center',
+     paddingHorizontal: 16,
+     paddingVertical: 12,
+     borderBottomWidth: 1,
+     borderBottomColor: darkTheme.textSecondary,
+   },
+   classDropdownItemSelected: {
+     backgroundColor: darkTheme.accent,
+   },
+   classDropdownItemText: {
+     color: darkTheme.text,
+     fontSize: 16,
+     fontWeight: '500',
+   },
+   classDropdownItemTextSelected: {
+     color: '#fff',
+     fontWeight: '600',
+   },
+   // Dropdown overlay for click outside functionality
+   dropdownOverlay: {
+     position: 'absolute',
+     top: 0,
+     left: 0,
+     right: 0,
+     bottom: 0,
+     zIndex: 999,
+   },
+   // Empty dropdown styles
+   emptyDropdownItem: {
+     paddingHorizontal: 16,
+     paddingVertical: 12,
+     alignItems: 'center',
+   },
+   emptyDropdownText: {
+     color: darkTheme.textSecondary,
+     fontSize: 14,
+     fontStyle: 'italic',
+   },
+   // Add Class Button styles
+   addClassButton: {
+     flexDirection: 'row',
+     alignItems: 'center',
+     justifyContent: 'center',
+     backgroundColor: darkTheme.accent,
+     paddingHorizontal: 20,
+     paddingVertical: 12,
+     borderRadius: 10,
+     marginHorizontal: 20,
+     marginTop: 16,
+     marginBottom: 8,
+   },
+   addClassButtonText: {
+     color: '#FFFFFF',
+     fontSize: 16,
+     fontWeight: '600',
+     marginLeft: 8,
+   },
+   // Add Class Modal styles
+   addClassForm: {
+     paddingHorizontal: 20,
+     paddingVertical: 16,
+   },
+   inputGroup: {
+     marginBottom: 16,
+   },
+   inputLabel: {
+     color: darkTheme.text,
+     fontSize: 14,
+     fontWeight: '500',
+     marginBottom: 8,
+   },
+   textInput: {
+     backgroundColor: darkTheme.muted,
+     borderRadius: 8,
+     paddingHorizontal: 12,
+     paddingVertical: 12,
+     color: darkTheme.text,
+     fontSize: 16,
+     borderWidth: 1,
+     borderColor: darkTheme.textSecondary,
+   },
+   submitBtnDisabled: {
+     opacity: 0.6,
+   },
 }); 

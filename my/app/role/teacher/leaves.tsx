@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -6,14 +6,13 @@ import {
   TouchableOpacity,
   FlatList,
   Image,
-  Modal,
-  TextInput,
   Dimensions,
-  ScrollView,
   ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { getStudentLeaveRequests, updateStudentLeaveStatus } from '../../../config/firebase';
 
 const { width } = Dimensions.get('window');
 
@@ -46,43 +45,181 @@ const STATUS_COLORS: { [key: string]: string } = {
   rejected: COLORS.rejected,
 };
 
-interface Leave { id: string; name: string; photo: any; start: string; end: string; type: string; status: string; }
-const MOCK_LEAVES: Leave[] = []; // TODO: Inject leaves from API or context
+interface Leave {
+  id: string;
+  teacherId?: string;
+  teacherName?: string;
+  studentId?: string;
+  studentName?: string;
+  studentClass?: string;
+  startDate: string;
+  endDate: string;
+  leaveType: string;
+  reason: string;
+  status: string;
+  submittedAt: Date;
+  reviewedBy?: string;
+  reviewedAt?: Date;
+  adminComment?: string;
+  attachmentFileName?: string;
+  attachmentType?: string;
+  parentContact?: string;
+  isStudent?: boolean;
+}
 
 export default function TeacherLeavesPage() {
   const [selectedFilter, setSelectedFilter] = useState('all');
-  const [modalVisible, setModalVisible] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [form, setForm] = useState({ start: '', end: '', type: '', reason: '', file: null });
-  const [submitting, setSubmitting] = useState(false);
+  const [leaves, setLeaves] = useState<Leave[]>([]);
+  const [teacherId, setTeacherId] = useState<string>('');
+  const [teacherName, setTeacherName] = useState<string>('');
   const [toast, setToast] = useState('');
 
-  const filteredLeaves = MOCK_LEAVES.filter(l => selectedFilter === 'all' || l.status === selectedFilter);
+  const filteredLeaves = leaves.filter(l => {
+    return selectedFilter === 'all' || l.status === selectedFilter;
+  });
 
-  const handleApprove = (id: string) => {
-    setToast('Leave approved!');
-    setTimeout(() => setToast(''), 2000);
+  useEffect(() => {
+    fetchTeacherInfo();
+    fetchLeaveRequests();
+  }, []);
+
+  useEffect(() => {
+    fetchLeaveRequests();
+  }, [selectedFilter]);
+
+  const fetchTeacherInfo = async () => {
+    try {
+      const userData = await AsyncStorage.getItem('userData');
+      if (userData) {
+        const parsed = JSON.parse(userData);
+        setTeacherId(parsed.uid || '');
+        setTeacherName(parsed.name || parsed.fullName || '');
+      }
+    } catch (error) {
+      console.error('Error fetching teacher info:', error);
+    }
   };
-  const handleReject = (id: string) => {
-    setToast('Leave rejected!');
-    setTimeout(() => setToast(''), 2000);
+
+    const fetchLeaveRequests = async () => {
+    try {
+      setLoading(true);
+      
+      // Build filters object - only include status if it's not 'all'
+      const studentFilters: any = {};
+      
+      if (selectedFilter !== 'all') {
+        studentFilters.status = selectedFilter;
+      }
+      
+      // Fetch student leave requests (all students for teacher to review)
+      const studentResult = await getStudentLeaveRequests(studentFilters);
+      
+      let allLeaves: Leave[] = [];
+      
+      // Map student leave requests
+      if (studentResult.success && studentResult.leaveRequests) {
+        const studentLeaves: Leave[] = studentResult.leaveRequests.map((doc: any) => ({
+          id: doc.id,
+          studentId: doc.studentId || '',
+          studentName: doc.studentName || '',
+          studentClass: doc.studentClass || '',
+          startDate: doc.startDate || '',
+          endDate: doc.endDate || '',
+          leaveType: doc.leaveType || '',
+          reason: doc.reason || '',
+          status: doc.status || 'pending',
+          submittedAt: doc.submittedAt?.toDate() || new Date(),
+          reviewedBy: doc.reviewedBy || '',
+          reviewedAt: doc.reviewedAt?.toDate() || undefined,
+          adminComment: doc.adminComment || '',
+          attachmentFileName: doc.attachmentFileName || '',
+          attachmentType: doc.attachmentType || '',
+          parentContact: doc.parentContact || '',
+          isStudent: true,
+        }));
+        
+        allLeaves = [...studentLeaves, ...allLeaves];
+      }
+      
+      setLeaves(allLeaves);
+      
+    } catch (error) {
+      console.error('Error fetching leave requests:', error);
+      Alert.alert('Error', 'Failed to fetch leave requests');
+      setLeaves([]); // Ensure leaves is set to empty array on error
+    } finally {
+      setLoading(false);
+    }
   };
-  const handleSubmit = () => {
-    setSubmitting(true);
-    setTimeout(() => {
-      setSubmitting(false);
-      setModalVisible(false);
-      setToast('Leave request submitted!');
-      setTimeout(() => setToast(''), 2000);
-    }, 1500);
+
+
+
+  const formatDate = (dateString: string) => {
+    const date = new Date(dateString);
+    return date.toLocaleDateString('en-US', { 
+      year: 'numeric', 
+      month: 'short', 
+      day: 'numeric' 
+    });
   };
+
+  const getStatusText = (status: string) => {
+    return status.charAt(0).toUpperCase() + status.slice(1);
+  };
+
+  const handleApproveLeave = async (leaveId: string, studentName: string) => {
+    try {
+      const result = await updateStudentLeaveStatus(
+        leaveId, 
+        'approved', 
+        teacherId, 
+        teacherName, 
+        'Leave request approved by teacher'
+      );
+      
+      if (result.success) {
+        Alert.alert('Success', `Leave request for ${studentName} has been approved`);
+        fetchLeaveRequests(); // Refresh the list
+      } else {
+        Alert.alert('Error', result.error || 'Failed to approve leave request');
+      }
+    } catch (error) {
+      console.error('Error approving leave request:', error);
+      Alert.alert('Error', 'Failed to approve leave request');
+    }
+  };
+
+  const handleRejectLeave = async (leaveId: string, studentName: string) => {
+    try {
+      const result = await updateStudentLeaveStatus(
+        leaveId, 
+        'rejected', 
+        teacherId, 
+        teacherName, 
+        'Leave request rejected by teacher'
+      );
+      
+      if (result.success) {
+        Alert.alert('Success', `Leave request for ${studentName} has been rejected`);
+        fetchLeaveRequests(); // Refresh the list
+      } else {
+        Alert.alert('Error', result.error || 'Failed to reject leave request');
+      }
+    } catch (error) {
+      console.error('Error rejecting leave request:', error);
+      Alert.alert('Error', 'Failed to reject leave request');
+    }
+  };
+
+
 
   return (
     <View style={styles.container}>
-      {/* Header */}
-      <View style={styles.headerBar}>
-        <Text style={styles.headerTitle}>Leave Requests</Text>
-      </View>
+             {/* Header */}
+       <View style={styles.headerBar}>
+         <Text style={styles.headerTitle}>Student Leave Requests</Text>
+       </View>
       {/* Filter Tabs */}
       <View style={styles.filterRow}>
         {FILTERS.map(f => (
@@ -96,97 +233,113 @@ export default function TeacherLeavesPage() {
           </TouchableOpacity>
         ))}
       </View>
-      {/* Leave Requests Grid */}
-      {loading ? (
-        <ActivityIndicator color={COLORS.accent} size="large" style={{ marginTop: 40 }} />
-      ) : filteredLeaves.length === 0 ? (
-        <View style={styles.emptyState}><Ionicons name="cloud-offline" size={48} color={COLORS.textSecondary} /><Text style={styles.emptyText}>No leave requests found.</Text></View>
-      ) : (
+      
+       
+       {/* Leave Requests Grid */}
+       {loading ? (
+         <ActivityIndicator color={COLORS.accent} size="large" style={{ marginTop: 40 }} />
+       ) : filteredLeaves.length === 0 ? (
+         <View style={styles.emptyState}>
+           <Ionicons name="cloud-offline" size={48} color={COLORS.textSecondary} />
+           <Text style={styles.emptyText}>No leave requests found.</Text>
+         </View>
+       ) : (
         <FlatList
           data={filteredLeaves}
           keyExtractor={item => item.id}
           numColumns={2}
           contentContainerStyle={{ paddingBottom: 120, paddingHorizontal: 8 }}
           columnWrapperStyle={{ justifyContent: 'space-between' }}
-          renderItem={({ item }) => (
-            <View style={styles.leaveCard}>
-              <View style={styles.cardHeader}>
-                <Image source={item.photo} style={styles.profilePhoto} />
-                <Text style={styles.teacherName}>{item.name}</Text>
-              </View>
-              <Text style={styles.leaveDates}>{item.start} - {item.end}</Text>
-              <Text style={styles.leaveType}>{item.type}</Text>
-              <View style={styles.statusRow}>
-                <View style={[styles.statusDot, { backgroundColor: STATUS_COLORS[item.status] }]} />
-                <Text style={[styles.statusText, { color: STATUS_COLORS[item.status] }]}>{item.status.charAt(0).toUpperCase() + item.status.slice(1)}</Text>
-              </View>
+                                       renderItem={({ item, index }) => (
+           <View style={[
+             styles.leaveCard, 
+             item.isStudent && styles.studentLeaveCard
+           ]}>
+             <View style={styles.cardHeader}>
+               <View style={[
+                 styles.profilePhoto,
+                 item.isStudent && styles.studentProfilePhoto
+               ]}>
+                 <Ionicons 
+                   name={item.isStudent ? "school" : "person"} 
+                   size={20} 
+                   color={item.isStudent ? COLORS.accent2 : COLORS.accent} 
+                 />
+               </View>
+               <View style={styles.nameContainer}>
+                 <Text style={[
+                   styles.teacherName,
+                   item.isStudent && styles.studentName
+                 ]}>
+                   {item.isStudent ? item.studentName : item.teacherName}
+                 </Text>
+                 {item.isStudent && (
+                   <Text style={styles.studentClass}>Class {item.studentClass}</Text>
+                 )}
+               </View>
+               {item.isStudent && (
+                 <View style={styles.studentBadge}>
+                   <Text style={styles.studentBadgeText}>Student</Text>
+                 </View>
+               )}
+             </View>
+             <Text style={styles.leaveDates}>
+               {formatDate(item.startDate)} - {formatDate(item.endDate)}
+             </Text>
+             <Text style={styles.leaveType}>{item.leaveType}</Text>
+             <Text style={styles.leaveReason} numberOfLines={2}>
+               {item.reason}
+             </Text>
+             {item.isStudent && item.parentContact && (
+               <Text style={styles.parentContact} numberOfLines={1}>
+                 Parent: {item.parentContact}
+               </Text>
+             )}
+             <View style={styles.statusRow}>
+               <View style={[styles.statusDot, { backgroundColor: STATUS_COLORS[item.status] }]} />
+               <Text style={[styles.statusText, { color: STATUS_COLORS[item.status] }]}>
+                 {getStatusText(item.status)}
+               </Text>
+             </View>
+             {item.adminComment && (
+               <Text style={styles.adminComment} numberOfLines={2}>
+                 Admin: {item.adminComment}
+               </Text>
+             )}
+                           {item.attachmentFileName && (
+                <View style={styles.attachmentRow}>
+                  <Ionicons name="document" size={16} color={COLORS.accent} />
+                  <Text style={styles.attachmentText} numberOfLines={1}>
+                    {item.attachmentFileName}
+                  </Text>
+                </View>
+              )}
+              
+              {/* Action Buttons - Only show for pending requests */}
               {item.status === 'pending' && (
-                <View style={styles.actionRow}>
-                  <TouchableOpacity style={styles.actionBtn} onPress={() => handleApprove(item.id)}>
-                    <Ionicons name="checkmark-circle" size={20} color={COLORS.approved} />
+                <View style={styles.actionButtons}>
+                  <TouchableOpacity
+                    style={[styles.actionButton, styles.approveButton]}
+                    onPress={() => handleApproveLeave(item.id, item.studentName || '')}
+                  >
+                    <Ionicons name="checkmark" size={16} color={COLORS.text} />
+                    <Text style={styles.actionButtonText}>Approve</Text>
                   </TouchableOpacity>
-                  <TouchableOpacity style={styles.actionBtn} onPress={() => handleReject(item.id)}>
-                    <Ionicons name="close-circle" size={20} color={COLORS.rejected} />
+                  <TouchableOpacity
+                    style={[styles.actionButton, styles.rejectButton]}
+                    onPress={() => handleRejectLeave(item.id, item.studentName || '')}
+                  >
+                    <Ionicons name="close" size={16} color={COLORS.text} />
+                    <Text style={styles.actionButtonText}>Reject</Text>
                   </TouchableOpacity>
                 </View>
               )}
             </View>
-          )}
+         )}
         />
       )}
-      {/* Floating Action Button */}
-      <TouchableOpacity style={[styles.fab, {backgroundColor: COLORS.accent3}]} activeOpacity={0.8} onPress={() => setModalVisible(true)}>
-        <Ionicons name="add" size={28} color={COLORS.text} />
-      </TouchableOpacity>
-      {/* Leave Application Modal */}
-      <Modal visible={modalVisible} animationType="slide" transparent onRequestClose={() => setModalVisible(false)}>
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Apply for Leave</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Start Date (YYYY-MM-DD)"
-              placeholderTextColor={COLORS.textSecondary}
-              value={form.start}
-              onChangeText={v => setForm({ ...form, start: v })}
-            />
-            <TextInput
-              style={styles.input}
-              placeholder="End Date (YYYY-MM-DD)"
-              placeholderTextColor={COLORS.textSecondary}
-              value={form.end}
-              onChangeText={v => setForm({ ...form, end: v })}
-            />
-            <TextInput
-              style={styles.input}
-              placeholder="Leave Type (e.g. Sick, Personal)"
-              placeholderTextColor={COLORS.textSecondary}
-              value={form.type}
-              onChangeText={v => setForm({ ...form, type: v })}
-            />
-            <TextInput
-              style={[styles.input, { height: 80 }]}
-              placeholder="Reason"
-              placeholderTextColor={COLORS.textSecondary}
-              value={form.reason}
-              onChangeText={v => setForm({ ...form, reason: v })}
-              multiline
-            />
-            <TouchableOpacity style={styles.uploadBtn}>
-              <Ionicons name="cloud-upload" size={20} color={COLORS.accent} />
-              <Text style={styles.uploadText}>Upload Document (optional)</Text>
-            </TouchableOpacity>
-            <View style={styles.modalActions}>
-              <TouchableOpacity style={styles.submitBtn} onPress={handleSubmit} disabled={submitting}>
-                {submitting ? <ActivityIndicator color={COLORS.text} /> : <Text style={styles.submitText}>Submit</Text>}
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.cancelBtn} onPress={() => setModalVisible(false)}>
-                <Text style={styles.cancelText}>Cancel</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </View>
-      </Modal>
+      
+      
       {/* Toast Message */}
       {toast ? (
         <View style={styles.toast}><Text style={styles.toastText}>{toast}</Text></View>
@@ -268,6 +421,9 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: COLORS.accent,
     marginRight: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.background,
   },
   teacherName: {
     color: COLORS.text,
@@ -285,6 +441,12 @@ const styles = StyleSheet.create({
     fontWeight: '500',
     marginBottom: 4,
   },
+  leaveReason: {
+    color: COLORS.textSecondary,
+    fontSize: 12,
+    marginBottom: 6,
+    lineHeight: 16,
+  },
   statusRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -300,16 +462,23 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
   },
-  actionRow: {
+  adminComment: {
+    color: COLORS.textSecondary,
+    fontSize: 11,
+    fontStyle: 'italic',
+    marginBottom: 4,
+    lineHeight: 14,
+  },
+  attachmentRow: {
     flexDirection: 'row',
-    justifyContent: 'flex-end',
+    alignItems: 'center',
     marginTop: 4,
   },
-  actionBtn: {
-    backgroundColor: COLORS.background,
-    borderRadius: 8,
-    padding: 6,
-    marginLeft: 8,
+  attachmentText: {
+    color: COLORS.accent,
+    fontSize: 11,
+    marginLeft: 4,
+    flex: 1,
   },
   fab: {
     position: 'absolute',
@@ -317,96 +486,13 @@ const styles = StyleSheet.create({
     right: 24,
     zIndex: 10,
     borderRadius: 30,
-    overflow: 'hidden',
-    elevation: 8,
-  },
-  fabGradient: {
     width: 60,
     height: 60,
-    borderRadius: 30,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(30,30,30,0.85)',
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  modalContent: {
-    backgroundColor: COLORS.card,
-    borderRadius: 18,
-    padding: 24,
-    width: '90%',
-    shadowColor: '#000',
-    shadowOpacity: 0.15,
-    shadowRadius: 12,
     elevation: 8,
   },
-  modalTitle: {
-    color: COLORS.text,
-    fontSize: 18,
-    fontWeight: 'bold',
-    marginBottom: 16,
-    textAlign: 'center',
-  },
-  input: {
-    backgroundColor: COLORS.background,
-    color: COLORS.text,
-    borderRadius: 10,
-    padding: 12,
-    fontSize: 15,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  uploadBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: COLORS.background,
-    borderRadius: 8,
-    padding: 10,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-  },
-  uploadText: {
-    color: COLORS.accent,
-    fontSize: 14,
-    marginLeft: 8,
-  },
-  modalActions: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 10,
-  },
-  submitBtn: {
-    backgroundColor: COLORS.accent3,
-    borderRadius: 10,
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    alignItems: 'center',
-    flex: 1,
-    marginRight: 8,
-  },
-  submitText: {
-    color: COLORS.text,
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
-  cancelBtn: {
-    backgroundColor: COLORS.chip,
-    borderRadius: 10,
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    alignItems: 'center',
-    flex: 1,
-  },
-  cancelText: {
-    color: COLORS.textSecondary,
-    fontSize: 16,
-    fontWeight: 'bold',
-  },
+
   toast: {
     position: 'absolute',
     bottom: 100,
@@ -433,4 +519,70 @@ const styles = StyleSheet.create({
     fontSize: 16,
     marginTop: 12,
   },
-}); 
+  // Student leave request styles
+  studentLeaveCard: {
+    borderLeftWidth: 4,
+    borderLeftColor: COLORS.accent2,
+  },
+  studentProfilePhoto: {
+    borderColor: COLORS.accent2,
+  },
+  nameContainer: {
+    flex: 1,
+    marginLeft: 8,
+  },
+  studentName: {
+    color: COLORS.accent2,
+  },
+  studentClass: {
+    color: COLORS.textSecondary,
+    fontSize: 12,
+    marginTop: 2,
+  },
+  studentBadge: {
+    backgroundColor: COLORS.accent2,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 8,
+  },
+  studentBadgeText: {
+    color: COLORS.background,
+    fontSize: 10,
+    fontWeight: 'bold',
+  },
+     parentContact: {
+     color: COLORS.textSecondary,
+     fontSize: 11,
+     marginBottom: 4,
+     fontStyle: 'italic',
+   },
+   // Action button styles
+   actionButtons: {
+     flexDirection: 'row',
+     justifyContent: 'space-between',
+     marginTop: 8,
+     gap: 8,
+   },
+   actionButton: {
+     flexDirection: 'row',
+     alignItems: 'center',
+     justifyContent: 'center',
+     paddingVertical: 6,
+     paddingHorizontal: 8,
+     borderRadius: 6,
+     flex: 1,
+   },
+   approveButton: {
+     backgroundColor: COLORS.accent3,
+   },
+   rejectButton: {
+     backgroundColor: COLORS.accent4,
+   },
+   actionButtonText: {
+     color: COLORS.text,
+     fontSize: 12,
+     fontWeight: '600',
+     marginLeft: 4,
+   },
+   
+ }); 

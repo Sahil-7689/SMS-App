@@ -4,7 +4,7 @@ import { createMaterialTopTabNavigator } from '@react-navigation/material-top-ta
 import { View, Text, StyleSheet, TextInput } from 'react-native';
 import FontAwesome from '@expo/vector-icons/FontAwesome';
 
-import SubjectTabScreen from '../../../components/academics/SubjectTabScreen';
+import ResultTabScreen from '../../../components/academics/ResultTabScreen';
 import ClassesTabScreen from '../../../components/academics/ClassesTabScreen';
 import SyllabusTabScreen from '../../../components/academics/SyllabusTabScreen';
 import TimetableTabScreen from '../../../components/academics/TimetableTabScreen';
@@ -40,8 +40,8 @@ export default function AcademicsTabsLayout() {
           tabBarLabelStyle: { fontWeight: 'bold' },
           tabBarIcon: ({ color }) => {
             switch (route.name) {
-              case 'Subject':
-                return <FontAwesome name="book" size={20} color={color} />;
+              case 'Result':
+                return <FontAwesome name="graduation-cap" size={20} color={color} />;
               case 'Classes':
                 return <FontAwesome name="users" size={20} color={color} />;
               case 'Syllabus':
@@ -55,8 +55,8 @@ export default function AcademicsTabsLayout() {
           tabBarShowIcon: true,
         })}
       >
-        <Tab.Screen name="Subject">
-          {() => <SubjectTabScreen search={search} />}
+        <Tab.Screen name="Result">
+          {() => <ResultTabScreen search={search} />}
         </Tab.Screen>
         <Tab.Screen name="Classes">
           {() => <ClassesTabScreen search={search} />}

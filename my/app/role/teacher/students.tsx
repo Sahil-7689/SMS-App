@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -8,8 +8,11 @@ import {
   ScrollView,
   FlatList,
   Dimensions,
+  ActivityIndicator,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { auth } from '../../../config/firebase';
+import { getStudents, getClasses } from '../../../config/firebase';
 
 const { width } = Dimensions.get('window');
 
@@ -29,16 +32,26 @@ const COLORS = {
   success: '#4CAF50',
 };
 
-interface Student { name?: string; id?: string; class?: string; age?: number; contact?: string; emergency?: string; photo?: any; status?: string; }
-const mockStudent: Student = {}; // TODO: Inject student from API or context
+interface Student { 
+  id: string;
+  name: string; 
+  class?: string; 
+  className?: string;
+  age?: number; 
+  contact?: string; 
+  emergency?: string; 
+  photo?: any; 
+  status?: string;
+  rollNo?: string;
+  email?: string;
+  parentName?: string;
+  parentContact?: string;
+}
+
 interface Subject { name: string; grade: string; progress: number; color: string; }
-const mockSubjects: Subject[] = []; // TODO: Inject subjects from API or context
 interface Attendance { percent: number; present: number; absent: number; late: number; total: number; monthly: { day: number; status: string; }[]; }
-const mockAttendance: Attendance = { percent: 0, present: 0, absent: 0, late: 0, total: 0, monthly: [] }; // TODO: Inject attendance from API or context
 interface Message { id: number; text: string; time: string; unread: boolean; }
-const mockMessages: Message[] = []; // TODO: Inject messages from API or context
 interface Alert { id: number; type: string; text: string; color: string; }
-const mockAlerts: Alert[] = []; // TODO: Inject alerts from API or context
 
 function StatusDot({ status }: { status: string }) {
   let color = COLORS.textSecondary;
@@ -48,89 +61,311 @@ function StatusDot({ status }: { status: string }) {
 }
 
 export default function TeacherStudentPage() {
+  const [students, setStudents] = useState<Student[]>([]);
+  const [classes, setClasses] = useState<any[]>([]);
+  const [selectedClass, setSelectedClass] = useState<string>('');
+  const [loading, setLoading] = useState(true);
+  const [selectedStudent, setSelectedStudent] = useState<Student | null>(null);
+  const [classDropdownVisible, setClassDropdownVisible] = useState(false);
+
+  // Mock data for demonstration (these would come from Firebase in a real implementation)
+  const mockSubjects: Subject[] = [
+    { name: 'Mathematics', grade: 'A+', progress: 0.85, color: COLORS.accent },
+    { name: 'Science', grade: 'A', progress: 0.78, color: COLORS.accent2 },
+    { name: 'English', grade: 'B+', progress: 0.72, color: COLORS.accent3 },
+  ];
+
+  const mockAttendance: Attendance = { 
+    percent: 92, 
+    present: 23, 
+    absent: 2, 
+    late: 1, 
+    total: 26, 
+    monthly: [
+      { day: 1, status: 'present' },
+      { day: 2, status: 'present' },
+      { day: 3, status: 'late' },
+      { day: 4, status: 'present' },
+      { day: 5, status: 'absent' },
+    ]
+  };
+
+  const mockMessages: Message[] = [
+    { id: 1, text: 'Assignment submitted successfully', time: '2 hours ago', unread: true },
+    { id: 2, text: 'Parent meeting scheduled for next week', time: '1 day ago', unread: false },
+  ];
+
+  const mockAlerts: Alert[] = [
+    { id: 1, type: 'info', text: 'Attendance above 90%', color: COLORS.success },
+    { id: 2, type: 'warning', text: 'Assignment due tomorrow', color: COLORS.warning },
+  ];
+
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+      const currentUser = auth.currentUser;
+      if (!currentUser) {
+        console.log('No authenticated user found');
+        return;
+      }
+
+      // Fetch classes for the teacher
+      const classesResult = await getClasses(currentUser.uid);
+      if (classesResult.success && classesResult.classes) {
+        setClasses(classesResult.classes);
+        if (classesResult.classes.length > 0) {
+          setSelectedClass(classesResult.classes[0].name);
+        }
+      }
+
+      // Fetch students for the first class (if available)
+      if (classesResult.success && classesResult.classes && classesResult.classes.length > 0) {
+        const studentsResult = await getStudents({ 
+          className: classesResult.classes[0].name,
+          teacherId: currentUser.uid 
+        });
+        if (studentsResult.success && studentsResult.students) {
+          setStudents(studentsResult.students);
+          if (studentsResult.students.length > 0) {
+            setSelectedStudent(studentsResult.students[0]);
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching data:', error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleClassChange = async (className: string) => {
+    try {
+      setSelectedClass(className);
+      setClassDropdownVisible(false);
+      
+      const currentUser = auth.currentUser;
+      if (!currentUser) return;
+
+      const studentsResult = await getStudents({ 
+        className: className,
+        teacherId: currentUser.uid 
+      });
+      
+      if (studentsResult.success && studentsResult.students) {
+        setStudents(studentsResult.students);
+        if (studentsResult.students.length > 0) {
+          setSelectedStudent(studentsResult.students[0]);
+        } else {
+          setSelectedStudent(null);
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching students for class:', error);
+    }
+  };
+
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color={COLORS.accent} />
+        <Text style={styles.loadingText}>Loading students...</Text>
+      </View>
+    );
+  }
+
+  if (!selectedStudent) {
+    return (
+      <View style={styles.emptyContainer}>
+        <Ionicons name="people-outline" size={64} color={COLORS.textSecondary} />
+        <Text style={styles.emptyText}>No students found</Text>
+        <Text style={styles.emptySubtext}>Students will appear here once they are registered</Text>
+      </View>
+    );
+  }
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 32 }}>
-      {/* Header */}
-      <View style={styles.headerBar}>
-        <Image source={mockStudent.photo} style={styles.profilePhoto} />
-        <View style={{ flex: 1, marginLeft: 16 }}>
-          <Text style={styles.studentName}>{mockStudent.name}</Text>
-          <Text style={styles.studentClass}>Class {mockStudent.class}</Text>
-        </View>
-        <StatusDot status={mockStudent.status || ''} />
-      </View>
-      {/* Alerts Dashboard */}
-      <View style={styles.alertsRow}>
-        {mockAlerts.map(a => (
-          <View key={a.id} style={[styles.alertCard, { backgroundColor: a.color }] }>
-            <Ionicons name={a.type === 'alert' ? 'alert-circle' : a.type === 'info' ? 'information-circle' : 'warning'} size={18} color="#fff" style={{ marginRight: 6 }} />
-            <Text style={styles.alertText}>{a.text}</Text>
+      {/* Class Selector */}
+      <View style={styles.classSelector}>
+        <TouchableOpacity 
+          style={styles.classDropdown}
+          onPress={() => setClassDropdownVisible(!classDropdownVisible)}
+        >
+          <Text style={styles.classDropdownText}>
+            {selectedClass || 'Select Class'}
+          </Text>
+          <Ionicons 
+            name={classDropdownVisible ? 'chevron-up' : 'chevron-down'} 
+            size={20} 
+            color={COLORS.text} 
+          />
+        </TouchableOpacity>
+        
+        {classDropdownVisible && (
+          <View style={styles.dropdownList}>
+            {classes.map((cls) => (
+              <TouchableOpacity
+                key={cls.id}
+                style={[
+                  styles.dropdownItem,
+                  selectedClass === cls.name && styles.selectedDropdownItem
+                ]}
+                onPress={() => handleClassChange(cls.name)}
+              >
+                <Text style={[
+                  styles.dropdownItemText,
+                  selectedClass === cls.name && styles.selectedDropdownItemText
+                ]}>
+                  {cls.name}
+                </Text>
+                {selectedClass === cls.name && (
+                  <Ionicons name="checkmark" size={16} color={COLORS.accent} />
+                )}
+              </TouchableOpacity>
+            ))}
           </View>
-        ))}
+        )}
       </View>
-      {/* Student Profile Card */}
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Student Profile</Text>
-        <View style={styles.profileRow}>
-          <Image source={mockStudent.photo} style={styles.profileAvatar} />
-          <View style={{ marginLeft: 16 }}>
-            <Text style={styles.profileLabel}>ID: <Text style={styles.profileValue}>{mockStudent.id}</Text></Text>
-            <Text style={styles.profileLabel}>Age: <Text style={styles.profileValue}>{mockStudent.age}</Text></Text>
-            <Text style={styles.profileLabel}>Contact: <Text style={styles.profileValue}>{mockStudent.contact}</Text></Text>
-            <Text style={styles.profileLabel}>Emergency: <Text style={[styles.profileValue, { color: COLORS.alert }]}>{mockStudent.emergency}</Text></Text>
-          </View>
-        </View>
-      </View>
-      {/* Academic Performance */}
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Academic Performance</Text>
-        <FlatList
-          data={mockSubjects}
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          keyExtractor={item => item.name}
-          renderItem={({ item }) => (
-            <View style={[styles.subjectCard, { borderColor: item.color }]}> 
-              <Text style={styles.subjectName}>{item.name}</Text>
-              <View style={styles.progressBarBg}>
-                <View style={[styles.progressBar, { width: `${item.progress * 100}%`, backgroundColor: item.color }]} />
-              </View>
-              <Text style={[styles.gradeText, { color: item.color }]}>{item.grade}</Text>
+
+      {/* Student List */}
+      <View style={styles.studentList}>
+        <Text style={styles.sectionTitle}>Students in {selectedClass}</Text>
+        {students.map((student) => (
+          <TouchableOpacity
+            key={student.id}
+            style={[
+              styles.studentCard,
+              selectedStudent?.id === student.id && styles.selectedStudentCard
+            ]}
+            onPress={() => setSelectedStudent(student)}
+          >
+            <Image 
+              source={student.photo || require('../../../assets/images/graduation-books.png')} 
+              style={styles.studentPhoto} 
+            />
+            <View style={styles.studentInfo}>
+              <Text style={styles.studentName}>{student.name}</Text>
+              <Text style={styles.studentDetails}>
+                Roll No: {student.rollNo || 'N/A'} • Age: {student.age || 'N/A'}
+              </Text>
+              <Text style={styles.studentContact}>
+                Contact: {student.contact || student.email || 'N/A'}
+              </Text>
             </View>
-          )}
-        />
-      </View>
-      {/* Attendance Tracking */}
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Attendance</Text>
-        <View style={styles.attendanceRow}>
-          <View style={styles.attendanceCircle}>
-            <Text style={styles.attendancePercent}>{mockAttendance.percent}%</Text>
-            <Text style={styles.attendanceLabel}>Present</Text>
-          </View>
-          <View style={styles.attendanceStats}>
-            <Text style={styles.attendanceStat}>Present: <Text style={{ color: COLORS.success }}>{mockAttendance.present}</Text></Text>
-            <Text style={styles.attendanceStat}>Absent: <Text style={{ color: COLORS.alert }}>{mockAttendance.absent}</Text></Text>
-            <Text style={styles.attendanceStat}>Late: <Text style={{ color: COLORS.warning }}>{mockAttendance.late}</Text></Text>
-            <Text style={styles.attendanceStat}>Total: <Text style={{ color: COLORS.text }}>{mockAttendance.total}</Text></Text>
-          </View>
-        </View>
-      </View>
-      {/* Communication Tools */}
-      <View style={styles.card}>
-        <Text style={styles.cardTitle}>Communication</Text>
-        {mockMessages.map(m => (
-          <View key={m.id} style={styles.messageRow}>
-            <Text style={[styles.messageText, m.unread && styles.unreadText]}>{m.text}</Text>
-            <Text style={styles.messageTime}>{m.time}</Text>
-            {m.unread && <View style={styles.unreadDot} />}
-          </View>
+            <StatusDot status={student.status || 'offline'} />
+          </TouchableOpacity>
         ))}
-        <View style={styles.commActionsRow}>
-          <TouchableOpacity style={styles.commActionBtn}><Ionicons name="chatbubble-ellipses" size={20} color={COLORS.accent} /><Text style={styles.commActionText}>Message</Text></TouchableOpacity>
-          <TouchableOpacity style={styles.commActionBtn}><Ionicons name="call" size={20} color={COLORS.success} /><Text style={styles.commActionText}>Call</Text></TouchableOpacity>
-        </View>
       </View>
+
+      {/* Selected Student Details */}
+      {selectedStudent && (
+        <>
+          {/* Header */}
+          <View style={styles.headerBar}>
+            <Image 
+              source={selectedStudent.photo || require('../../../assets/images/graduation-books.png')} 
+              style={styles.profilePhoto} 
+            />
+            <View style={{ flex: 1, marginLeft: 16 }}>
+              <Text style={styles.studentName}>{selectedStudent.name}</Text>
+              <Text style={styles.studentClass}>Class {selectedStudent.className || selectedStudent.class}</Text>
+            </View>
+            <StatusDot status={selectedStudent.status || 'offline'} />
+          </View>
+
+          {/* Alerts Dashboard */}
+          <View style={styles.alertsRow}>
+            {mockAlerts.map(a => (
+              <View key={a.id} style={[styles.alertCard, { backgroundColor: a.color }] }>
+                <Ionicons name={a.type === 'alert' ? 'alert-circle' : a.type === 'info' ? 'information-circle' : 'warning'} size={18} color="#fff" style={{ marginRight: 6 }} />
+                <Text style={styles.alertText}>{a.text}</Text>
+              </View>
+            ))}
+          </View>
+
+          {/* Student Profile Card */}
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Student Profile</Text>
+            <View style={styles.profileRow}>
+              <Image 
+                source={selectedStudent.photo || require('../../../assets/images/graduation-books.png')} 
+                style={styles.profileAvatar} 
+              />
+              <View style={{ marginLeft: 16 }}>
+                <Text style={styles.profileLabel}>ID: <Text style={styles.profileValue}>{selectedStudent.id}</Text></Text>
+                <Text style={styles.profileLabel}>Roll No: <Text style={styles.profileValue}>{selectedStudent.rollNo || 'N/A'}</Text></Text>
+                <Text style={styles.profileLabel}>Age: <Text style={styles.profileValue}>{selectedStudent.age || 'N/A'}</Text></Text>
+                <Text style={styles.profileLabel}>Contact: <Text style={styles.profileValue}>{selectedStudent.contact || selectedStudent.email || 'N/A'}</Text></Text>
+                <Text style={styles.profileLabel}>Parent: <Text style={styles.profileValue}>{selectedStudent.parentName || 'N/A'}</Text></Text>
+                <Text style={styles.profileLabel}>Emergency: <Text style={[styles.profileValue, { color: COLORS.alert }]}>{selectedStudent.emergency || selectedStudent.parentContact || 'N/A'}</Text></Text>
+              </View>
+            </View>
+          </View>
+
+          {/* Academic Performance */}
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Academic Performance</Text>
+            <FlatList
+              data={mockSubjects}
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              keyExtractor={item => item.name}
+              renderItem={({ item }) => (
+                <View style={[styles.subjectCard, { borderColor: item.color }]}> 
+                  <Text style={styles.subjectName}>{item.name}</Text>
+                  <View style={styles.progressBarBg}>
+                    <View style={[styles.progressBar, { width: `${item.progress * 100}%`, backgroundColor: item.color }]} />
+                  </View>
+                  <Text style={[styles.gradeText, { color: item.color }]}>{item.grade}</Text>
+                </View>
+              )}
+            />
+          </View>
+
+          {/* Attendance Tracking */}
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Attendance</Text>
+            <View style={styles.attendanceRow}>
+              <View style={styles.attendanceCircle}>
+                <Text style={styles.attendancePercent}>{mockAttendance.percent}%</Text>
+                <Text style={styles.attendanceLabel}>Present</Text>
+              </View>
+              <View style={styles.attendanceStats}>
+                <Text style={styles.attendanceStat}>Present: <Text style={{ color: COLORS.success }}>{mockAttendance.present}</Text></Text>
+                <Text style={styles.attendanceStat}>Absent: <Text style={{ color: COLORS.alert }}>{mockAttendance.absent}</Text></Text>
+                <Text style={styles.attendanceStat}>Late: <Text style={{ color: COLORS.warning }}>{mockAttendance.late}</Text></Text>
+                <Text style={styles.attendanceStat}>Total: <Text style={{ color: COLORS.text }}>{mockAttendance.total}</Text></Text>
+              </View>
+            </View>
+          </View>
+
+          {/* Communication Tools */}
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Communication</Text>
+            {mockMessages.map(m => (
+              <View key={m.id} style={styles.messageRow}>
+                <Text style={[styles.messageText, m.unread && styles.unreadText]}>{m.text}</Text>
+                <Text style={styles.messageTime}>{m.time}</Text>
+                {m.unread && <View style={styles.unreadDot} />}
+              </View>
+            ))}
+            <View style={styles.commActionsRow}>
+              <TouchableOpacity style={styles.commActionBtn}>
+                <Ionicons name="chatbubble-ellipses" size={20} color={COLORS.accent} />
+                <Text style={styles.commActionText}>Message</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.commActionBtn}>
+                <Ionicons name="call" size={20} color={COLORS.success} />
+                <Text style={styles.commActionText}>Call</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </>
+      )}
     </ScrollView>
   );
 }
@@ -139,6 +374,134 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: COLORS.background,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: COLORS.background,
+  },
+  loadingText: {
+    color: COLORS.text,
+    fontSize: 16,
+    marginTop: 16,
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: COLORS.background,
+    paddingHorizontal: 32,
+  },
+  emptyText: {
+    color: COLORS.text,
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginTop: 16,
+  },
+  emptySubtext: {
+    color: COLORS.textSecondary,
+    fontSize: 14,
+    textAlign: 'center',
+    marginTop: 8,
+  },
+  classSelector: {
+    marginHorizontal: 18,
+    marginTop: 18,
+    marginBottom: 8,
+    position: 'relative',
+  },
+  classDropdown: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    backgroundColor: COLORS.card,
+    borderRadius: 12,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  classDropdownText: {
+    color: COLORS.text,
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  dropdownList: {
+    position: 'absolute',
+    top: '100%',
+    left: 0,
+    right: 0,
+    backgroundColor: COLORS.card,
+    borderRadius: 12,
+    marginTop: 4,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    zIndex: 1000,
+    maxHeight: 200,
+  },
+  dropdownItem: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+  },
+  selectedDropdownItem: {
+    backgroundColor: COLORS.accent + '20',
+  },
+  dropdownItemText: {
+    color: COLORS.text,
+    fontSize: 14,
+  },
+  selectedDropdownItemText: {
+    color: COLORS.accent,
+    fontWeight: '600',
+  },
+  studentList: {
+    marginHorizontal: 18,
+    marginBottom: 18,
+  },
+  sectionTitle: {
+    color: COLORS.text,
+    fontSize: 18,
+    fontWeight: 'bold',
+    marginBottom: 12,
+  },
+  studentCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.card,
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  selectedStudentCard: {
+    borderColor: COLORS.accent,
+    backgroundColor: COLORS.accent + '10',
+  },
+  studentPhoto: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    borderWidth: 2,
+    borderColor: COLORS.accent,
+  },
+  studentInfo: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  studentDetails: {
+    color: COLORS.textSecondary,
+    fontSize: 12,
+    marginTop: 2,
+  },
+  studentContact: {
+    color: COLORS.textSecondary,
+    fontSize: 12,
+    marginTop: 2,
   },
   headerBar: {
     flexDirection: 'row',
